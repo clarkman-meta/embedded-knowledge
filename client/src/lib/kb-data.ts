@@ -608,6 +608,34 @@ PROXRAW（原始數位量測值）</pre>
 
 <h2>數位信號鏈概覽</h2>
 <p>經過 AFE 處理後，產生的 <code>PROXRAW</code> 會進入數位濾波鏈，依序經過 RAW Filter、USE Filter 和 AVG Filter，最終計算出 <code>PROXDIFF</code> 並與閾值比較以決定偵測狀態（PROXSTAT）。詳細的數位濾波流程將在後續章節深入探討。</p>
+
+<h2>官方規格書下載</h2>
+
+<p>以下為本知識庫所參考的 Semtech 官方文件，可直接下載 PDF：</p>
+
+<table>
+  <thead><tr><th>文件名稱</th><th>版本</th><th>說明</th><th>下載</th></tr></thead>
+  <tbody>
+    <tr>
+      <td>SX9204 Datasheet</td>
+      <td>Rev. 3</td>
+      <td>完整硬體規格、暫存器地圖、電氣特性</td>
+      <td><a href="https://d2xsxph8kpxj0f.cloudfront.net/310519663408076565/3qEFW4iCXc8PkkvG87arAD/SX9204_Final_DS_Rev3_4cd16e30.pdf" target="_blank" rel="noopener">📄 下載</a></td>
+    </tr>
+    <tr>
+      <td>SX9200/04/06 Parameters Adjustment Guidelines</td>
+      <td>Rev. 1.7</td>
+      <td>參數調校指南，涵蓋 AGAIN、Threshold、HYST 設定方法</td>
+      <td><a href="https://d2xsxph8kpxj0f.cloudfront.net/310519663408076565/3qEFW4iCXc8PkkvG87arAD/SX9200_04_06_Parameters_Adjustment_Guidelines_Rev1_7_12232024_0353fab6.pdf" target="_blank" rel="noopener">📄 下載</a></td>
+    </tr>
+    <tr>
+      <td>SX9204 Reference Sensor Correction Guidelines</td>
+      <td>Rev. 1</td>
+      <td>參考感測器補償技術應用說明</td>
+      <td><a href="https://d2xsxph8kpxj0f.cloudfront.net/310519663408076565/3qEFW4iCXc8PkkvG87arAD/SX9204_Reference_Sensor_Correction_Guidelines_AN_Rev1_39b8ae53.pdf" target="_blank" rel="noopener">📄 下載</a></td>
+    </tr>
+  </tbody>
+</table>
             `
           },
           {
@@ -1024,6 +1052,238 @@ PROXAVG（環境基線）
 </ul>
             `
           }]
+      },
+      {
+        id: "hall-sensor",
+        title: "Hall Sensor",
+        description: "霍爾效應磁場感測器的原理、暫存器與驅動開發，以 AK09973D 為主要範例",
+        icon: "Magnet",
+        articles: [
+          {
+            id: "ak09973d-overview",
+            title: "AK09973D 概覽與主要特性",
+            description: "AKM AK09973D 三軸霍爾感測器的功能定位、規格一覽與功能方塊圖",
+            tags: ["AK09973D", "Hall Sensor", "磁場感測", "AKM", "三軸"],
+            lastUpdated: "2026-04-14",
+            content: `
+<h1>AK09973D 概覽與主要特性</h1>
+
+<p>AK09973D 是 Asahi Kasei Microdevices（AKM）推出的<strong>高靈敏度三軸磁場感測器 IC</strong>，內建霍爾元件（Hall Element）可量測 X、Y、Z 三個方向的磁場強度。其設計針對低功耗行動裝置與穿戴式設備優化，常見應用包括智慧型手機翻蓋偵測、裝置姿態判斷以及通用三軸磁場量測。</p>
+
+<h2>主要規格一覽</h2>
+
+<table>
+  <thead><tr><th>規格項目</th><th>數值</th></tr></thead>
+  <tbody>
+    <tr><td><strong>量測範圍</strong></td><td>±10.1 mT（X、Y、Z 三軸）</td></tr>
+    <tr><td><strong>靈敏度</strong></td><td>1.1 µT/LSB（典型值）</td></tr>
+    <tr><td><strong>解析度</strong></td><td>16-bit（每軸）</td></tr>
+    <tr><td><strong>供電電壓（VDD）</strong></td><td>1.65 V ～ 1.95 V</td></tr>
+    <tr><td><strong>介面電壓（VID）</strong></td><td>1.65 V ～ 1.95 V</td></tr>
+    <tr><td><strong>待機電流</strong></td><td>0.5 µA（Power-down 模式）</td></tr>
+    <tr><td><strong>量測電流</strong></td><td>1.5 mA（量測中）</td></tr>
+    <tr><td><strong>通訊介面</strong></td><td>I2C（標準 / Fast / Fast Mode Plus，最高 1 MHz）</td></tr>
+    <tr><td><strong>封裝</strong></td><td>6-pin WL-CSP（1.18 mm × 0.78 mm × 0.573 mm）</td></tr>
+    <tr><td><strong>操作溫度</strong></td><td>-30°C ～ +85°C</td></tr>
+  </tbody>
+</table>
+
+<h2>功能方塊圖架構</h2>
+
+<p>AK09973D 的內部架構由以下主要功能模組組成：</p>
+
+<pre>
+磁場輸入（X / Y / Z 軸）
+  ↓
+霍爾元件（Hall Element）
+  ↓
+感測器驅動電路（Sensor Drive Circuit）
+  ↓
+信號放大鏈（Signal Amplifier Chain）
+  ↓
+16-bit ADC（類比數位轉換）
+  ↓
+控制邏輯與暫存器（Control Logic & Registers）
+  ↓
+I2C 介面（與主控 MCU/SoC 通訊）
+</pre>
+
+<h2>典型應用場景</h2>
+
+<table>
+  <thead><tr><th>應用場景</th><th>說明</th></tr></thead>
+  <tbody>
+    <tr><td><strong>翻蓋偵測</strong></td><td>偵測手機保護殼或平板翻蓋的開合狀態，觸發螢幕開關</td></tr>
+    <tr><td><strong>裝置姿態判斷</strong></td><td>搭配加速度計判斷裝置方向，輔助 UI 旋轉或省電策略</td></tr>
+    <tr><td><strong>近接偵測</strong></td><td>偵測磁鐵靠近，用於按鍵、滑蓋等機械動作感測</td></tr>
+    <tr><td><strong>通用磁場量測</strong></td><td>量測環境磁場強度，用於指南針或磁場干擾分析</td></tr>
+  </tbody>
+</table>
+
+<h2>官方規格書下載</h2>
+
+<p>以下為本知識庫所參考的 AKM 官方文件，可直接下載 PDF：</p>
+
+<table>
+  <thead><tr><th>文件名稱</th><th>版本</th><th>說明</th><th>下載</th></tr></thead>
+  <tbody>
+    <tr>
+      <td>AK09973D Datasheet</td>
+      <td>Rev. —</td>
+      <td>完整硬體規格、暫存器地圖、電氣特性與封裝尺寸</td>
+      <td><a href="https://d2xsxph8kpxj0f.cloudfront.net/310519663408076565/3qEFW4iCXc8PkkvG87arAD/ak09973d-en-datasheet-myakm_66fc696c.pdf" target="_blank" rel="noopener">📄 下載</a></td>
+    </tr>
+  </tbody>
+</table>
+`
+          },
+          {
+            id: "ak09973d-registers",
+            title: "暫存器地圖與量測流程",
+            description: "AK09973D 的完整暫存器說明、操作模式切換與標準量測讀取流程",
+            tags: ["AK09973D", "暫存器", "I2C", "量測流程", "DRDY"],
+            lastUpdated: "2026-04-14",
+            content: `
+<h1>暫存器地圖與量測流程</h1>
+
+<p>AK09973D 透過 I2C 介面存取內部暫存器，所有操作模式設定、量測資料讀取與狀態監控均透過暫存器完成。理解暫存器結構是正確驅動此感測器的基礎。</p>
+
+<h2>主要暫存器一覽</h2>
+
+<table>
+  <thead><tr><th>位址</th><th>名稱</th><th>存取</th><th>說明</th></tr></thead>
+  <tbody>
+    <tr><td><code>00h</code></td><td>WIA1</td><td>R</td><td>公司 ID（固定值 0x48，AKM 識別碼）</td></tr>
+    <tr><td><code>01h</code></td><td>WIA2</td><td>R</td><td>裝置 ID（固定值 0xC1，AK09973D 識別碼）</td></tr>
+    <tr><td><code>10h</code></td><td>ST1</td><td>R</td><td>狀態暫存器 1：Bit 0 = DRDY（資料就緒旗標）</td></tr>
+    <tr><td><code>11h–12h</code></td><td>HXL / HXH</td><td>R</td><td>X 軸磁場量測資料（低位元組 / 高位元組）</td></tr>
+    <tr><td><code>13h–14h</code></td><td>HYL / HYH</td><td>R</td><td>Y 軸磁場量測資料（低位元組 / 高位元組）</td></tr>
+    <tr><td><code>15h–16h</code></td><td>HZL / HZH</td><td>R</td><td>Z 軸磁場量測資料（低位元組 / 高位元組）</td></tr>
+    <tr><td><code>18h</code></td><td>ST2</td><td>R</td><td>狀態暫存器 2：Bit 3 = HOFL（磁場溢位旗標），讀取後解除資料鎖定</td></tr>
+    <tr><td><code>20h</code></td><td>CNTL1</td><td>R/W</td><td>控制暫存器 1：設定操作模式（Power-down / Single / Continuous / Self-test）</td></tr>
+    <tr><td><code>21h</code></td><td>CNTL2</td><td>R/W</td><td>控制暫存器 2：設定連續量測頻率（1/10/20/50/100 Hz）與量測範圍</td></tr>
+    <tr><td><code>30h</code></td><td>SRST</td><td>W</td><td>軟體重置：寫入 0x01 觸發全暫存器重置</td></tr>
+  </tbody>
+</table>
+
+<h2>操作模式</h2>
+
+<table>
+  <thead><tr><th>模式</th><th>CNTL1 設定值</th><th>說明</th></tr></thead>
+  <tbody>
+    <tr><td><strong>Power-down</strong></td><td>0x00</td><td>預設狀態，最低功耗（0.5 µA），不進行量測</td></tr>
+    <tr><td><strong>Single Measurement</strong></td><td>0x01</td><td>執行一次量測後自動回到 Power-down 模式</td></tr>
+    <tr><td><strong>Continuous Mode 1</strong></td><td>0x02</td><td>連續量測，頻率由 CNTL2 設定（1/10/20/50/100 Hz）</td></tr>
+    <tr><td><strong>Self-test</strong></td><td>0x10</td><td>內建自我測試，驗證感測器功能是否正常</td></tr>
+  </tbody>
+</table>
+
+<h2>標準量測讀取流程</h2>
+
+<pre>
+1. 上電後，透過 I2C 讀取 WIA1（00h）= 0x48 及 WIA2（01h）= 0xC1
+   確認裝置識別正確
+
+2. 寫入 SRST（30h）= 0x01，執行軟體重置
+   確保所有暫存器回到預設狀態
+
+3. 設定 CNTL2（21h）：選擇量測頻率（例如 0x04 = 100 Hz）
+
+4. 設定 CNTL1（20h）：切換至目標操作模式
+   例如：0x02 = Continuous Measurement Mode
+
+5. 輪詢或等待中斷：
+   讀取 ST1（10h），確認 DRDY bit（Bit 0）= 1
+
+6. 讀取量測資料：
+   連續讀取 11h ～ 16h（HXL, HXH, HYL, HYH, HZL, HZH）
+   共 6 個位元組，每軸為 16-bit 有號整數（Little-Endian）
+
+7. 讀取 ST2（18h）：
+   確認 HOFL bit（Bit 3）= 0（無溢位）
+   此讀取動作同時解除資料鎖定，允許下次量測更新資料
+
+8. 將原始值轉換為物理量：
+   磁場（µT）= 原始值 × 靈敏度（1.1 µT/LSB）
+</pre>
+
+<div class="callout-warning">
+  <strong>⚠️ 資料鎖定機制：</strong>讀取任何量測資料暫存器（11h～16h）後，資料會被鎖定，直到讀取 ST2（18h）才會解除。若未讀取 ST2，下一次量測的資料將無法更新到暫存器中，導致持續讀到舊資料。
+</div>
+
+<div class="callout-warning">
+  <strong>⚠️ 磁場溢位（HOFL）：</strong>當磁場強度超過量測範圍（±10.1 mT）時，ST2 的 HOFL bit 會被設為 1，此時讀取的量測資料無效，應予以丟棄。
+</div>
+
+<h2>I2C 介面規格</h2>
+
+<table>
+  <thead><tr><th>項目</th><th>規格</th></tr></thead>
+  <tbody>
+    <tr><td>從機位址（Slave Address）</td><td>可透過腳位配置選擇 0x10 或 0x11</td></tr>
+    <tr><td>支援速率</td><td>100 kHz（Standard）、400 kHz（Fast）、1 MHz（Fast Mode Plus）</td></tr>
+    <tr><td>多位元組讀取</td><td>支援自動地址遞增，可連續讀取多個暫存器</td></tr>
+  </tbody>
+</table>
+`
+          },
+          {
+            id: "ak09973d-design-guidelines",
+            title: "硬體設計指南與注意事項",
+            description: "AK09973D 的 PCB 佈局建議、電源去耦、磁場干擾防護與封裝應力注意事項",
+            tags: ["AK09973D", "硬體設計", "PCB", "去耦電容", "磁場干擾"],
+            lastUpdated: "2026-04-14",
+            content: `
+<h1>硬體設計指南與注意事項</h1>
+
+<p>AK09973D 採用極小的 WL-CSP 封裝，在 PCB 設計時需特別注意電源去耦、磁場干擾隔離以及機械應力控制，才能確保感測器的靈敏度與量測準確性。</p>
+
+<h2>電源設計</h2>
+
+<table>
+  <thead><tr><th>設計要點</th><th>建議</th></tr></thead>
+  <tbody>
+    <tr><td><strong>去耦電容</strong></td><td>在 VDD 與 VSS 之間盡量靠近 IC 腳位放置 0.1 µF 陶瓷電容，抑制電源雜訊</td></tr>
+    <tr><td><strong>電源電壓</strong></td><td>VDD 維持在 1.65 V ～ 1.95 V 範圍內，不可超過最大額定值</td></tr>
+    <tr><td><strong>電源序列</strong></td><td>上電後建議執行軟體重置（SRST），確保暫存器初始狀態正確</td></tr>
+  </tbody>
+</table>
+
+<h2>PCB 佈局建議</h2>
+
+<ul>
+  <li><strong>避免高電流走線</strong>：高電流走線（如電源 SMPS 開關節點）會產生磁場，應遠離 AK09973D 的感測區域，建議間距至少 5 mm</li>
+  <li><strong>避免鐵磁性材料</strong>：PCB 附近的鐵磁性材料（如螺絲、屏蔽罩）會扭曲磁場，影響量測準確性，設計時應評估其影響</li>
+  <li><strong>接地層</strong>：在感測器下方提供完整的接地層，有助於降低電磁干擾（EMI）</li>
+  <li><strong>走線長度</strong>：I2C 走線應盡量短，並加入適當的上拉電阻（通常 4.7 kΩ），避免信號完整性問題</li>
+</ul>
+
+<h2>機械應力注意事項</h2>
+
+<p>AK09973D 採用 WL-CSP（Wafer-Level Chip Scale Package）封裝，對機械應力極為敏感：</p>
+
+<div class="callout-warning">
+  <strong>⚠️ 封裝應力警告：</strong>WL-CSP 封裝在 PCB 回流焊（Reflow Soldering）過程中，若 PCB 彎曲或受到過大機械應力，可能導致感測器靈敏度偏移或永久損壞。建議在 PCB 設計時避免在感測器附近設置大型機械固定點或開孔。
+</div>
+
+<h2>磁場干擾來源與對策</h2>
+
+<table>
+  <thead><tr><th>干擾來源</th><th>影響</th><th>對策</th></tr></thead>
+  <tbody>
+    <tr><td>SMPS 開關電源</td><td>產生交變磁場，造成量測雜訊</td><td>增加物理距離，或使用磁屏蔽材料隔離</td></tr>
+    <tr><td>馬達 / 線圈</td><td>強磁場可能超過量測範圍（HOFL 溢位）</td><td>評估最大磁場強度，確保不超過 ±10.1 mT</td></tr>
+    <tr><td>鐵磁性元件</td><td>靜態磁場偏移，影響基線準確性</td><td>在軟體層面進行硬鐵（Hard Iron）校正</td></tr>
+    <tr><td>溫度變化</td><td>靈敏度隨溫度略有變化</td><td>在極端溫度環境下考慮溫度補償</td></tr>
+  </tbody>
+</table>
+
+<div class="callout-tip">
+  <strong>✅ 最佳實踐：</strong>在系統初始化時，於無外部磁場干擾的環境下讀取三軸基線值並儲存，後續量測時減去此基線值，可有效消除靜態磁場偏移（Hard Iron Effect），提升偵測精度。
+</div>
+`
+          }
+        ]
       }
     ]
   }
@@ -1110,6 +1370,46 @@ Housekeeping
 <div class="callout-info">
   <strong>ℹ️ 文件參考：</strong>本文內容主要來源於 PMAR2230 Data Sheet（80-85048-1 Rev. AC）第 1 章 Introduction 及 Section 3.1/3.2 電氣規格。
 </div>
+
+<h2>官方規格書下載</h2>
+
+<p>以下為本知識庫所參考的 Qualcomm 官方文件，可直接下載 PDF：</p>
+
+<table>
+  <thead><tr><th>文件名稱</th><th>文件編號</th><th>說明</th><th>下載</th></tr></thead>
+  <tbody>
+    <tr>
+      <td>PMAR2230 Data Sheet</td>
+      <td>80-85048-1 Rev. AC</td>
+      <td>硬體規格、電源軌、電氣特性</td>
+      <td><a href="https://d2xsxph8kpxj0f.cloudfront.net/310519663408076565/3qEFW4iCXc8PkkvG87arAD/80-85048-1_REV_AC_PMAR2230_Data_Sheet_d9cb1b80.pdf" target="_blank" rel="noopener">📄 下載</a></td>
+    </tr>
+    <tr>
+      <td>PMAR2230/PMAR2230M Design Guidelines</td>
+      <td>80-85048-5 Rev. AA</td>
+      <td>硬體設計指南訓練教材</td>
+      <td><a href="https://d2xsxph8kpxj0f.cloudfront.net/310519663408076565/3qEFW4iCXc8PkkvG87arAD/80-85048-5_REV_AA_PMAR2230_PMAR2230M_Power_Management_IC_Design_Guidelines_Training_Slides_762253b9.pdf" target="_blank" rel="noopener">📄 下載</a></td>
+    </tr>
+    <tr>
+      <td>Linux PMIC Software Overview</td>
+      <td>80-85322-64 Rev. AB</td>
+      <td>SAR2230P/SAR1250P Linux 軟體架構總覽</td>
+      <td><a href="https://d2xsxph8kpxj0f.cloudfront.net/310519663408076565/3qEFW4iCXc8PkkvG87arAD/80-85322-64_REV_AB_SAR2230P_SAR1250P_Linux_PMIC_Software_Overview_21733883.pdf" target="_blank" rel="noopener">📄 下載</a></td>
+    </tr>
+    <tr>
+      <td>PMIC Software User Guide</td>
+      <td>80-85322-100 Rev. AA</td>
+      <td>SAR2230P/SAR1250P 軟體使用者指南</td>
+      <td><a href="https://d2xsxph8kpxj0f.cloudfront.net/310519663408076565/3qEFW4iCXc8PkkvG87arAD/80-85322-100_REV_AA_SAR2230P_SAR1250P_PMIC_Software_User_Guide_4632d755.pdf" target="_blank" rel="noopener">📄 下載</a></td>
+    </tr>
+    <tr>
+      <td>PMAR2230 Hardware Register Description</td>
+      <td>HRD-PMAR2230-S1 Rev. 1</td>
+      <td>完整硬體暫存器說明</td>
+      <td><a href="https://d2xsxph8kpxj0f.cloudfront.net/310519663408076565/3qEFW4iCXc8PkkvG87arAD/HRD-PMAR2230-S1_REV_1_PMAR2230_Hardware_Register_Description_74ccdece.pdf" target="_blank" rel="noopener">📄 下載</a></td>
+    </tr>
+  </tbody>
+</table>
 `
           },
           {
