@@ -267,7 +267,7 @@ HLOS（Android / Linux Kernel）</pre>
 
 <pre>感測器原始資料（加速度計、陀螺儀等）
         ↓
-SLPI（極低功耗，持續運作，< 1 mW）
+SLPI（極低功耗，持續運作，&lt; 1 mW）
         ↓ 達到條件（如偵測到明顯動作）
 ADSP（低功耗，被喚醒做複雜處理，數 mW）
         ↓ 達到條件（如偵測到語音喚醒詞）
@@ -279,7 +279,7 @@ APSS / HLOS（主 CPU，被喚醒執行應用邏輯，數百 mW）</pre>
 <p>A: <strong>不對</strong>。ADSP 在系統 sleep 時確實可以保持運作（ADSP Island Mode），並且可以處理感測器資料。但 SLPI 的功耗比 ADSP 更低，因此最基礎的 Always-on 採集由 SLPI 負責，只有需要更複雜運算時才喚醒 ADSP。</p>
 
 <p><strong>Q: SLPI 和 ADSP 的感測器是同一組嗎？</strong></p>
-<p>A: 通常感測器的物理介面（I2C/SPI）是連接到 SLPI 的。ADSP 透過 IPC（Inter-Processor Communication）從 SLPI 取得資料，而非直接連接感測器硬體。
+<p>A: 通常感測器的物理介面（I2C/SPI）是連接到 SLPI 的。ADSP 透過 IPC（Inter-Processor Communication）從 SLPI 取得資料，而非直接連接感測器硬體。</p>
             `
           },
           {
@@ -310,192 +310,19 @@ APSS / HLOS（主 CPU，被喚醒執行應用邏輯，數百 mW）</pre>
 2. 將韌體載入到預留的記憶體區域
 3. 在 TrustZone（安全世界）中驗證韌體簽章
 4. 重置 SLPI 處理器，開始執行韌體
-5. 透過 SMP2P 中斷確認 SLPI 就緒</pre>
+5. 透過 SMP2P 中斷確認 SLPI 已就緒</pre>
 
-<h2>通訊機制</h2>
+<h2>Linux 支援現狀</h2>
 
-<p>SLPI 與主 CPU 之間的通訊使用以下機制：</p>
-
-<table>
-  <thead><tr><th>機制</th><th>用途</th></tr></thead>
-  <tbody>
-    <tr><td>SMD / GLINK</td><td>主要資料通道，傳輸感測器資料</td></tr>
-    <tr><td>SMP2P（Shared Memory Point to Point）</td><td>傳遞狀態訊號（ready、fatal、stop 等）</td></tr>
-    <tr><td>Shared Memory（SMEM）</td><td>底層共享記憶體基礎設施</td></tr>
-  </tbody>
-</table>
-
-<h2>Linux Mainline 支援挑戰</h2>
-
-<p>在 Linux mainline 上支援 SLPI 面臨以下挑戰：</p>
-
+<p>SLPI 的 Linux mainline 支援需要以下元件：</p>
 <ul>
-  <li><strong>專有韌體</strong>：SLPI 韌體（<code>slpi.mbn</code>）是 Qualcomm 的專有二進位檔，沒有開放原始碼</li>
-  <li><strong>專有 HAL</strong>：Android 上的感測器 HAL 是閉源的，與 SLPI 韌體緊密耦合</li>
-  <li><strong>無法繞過</strong>：感測器的 I2C/SPI 線路直接連接到 SLPI，無法從主 CPU 直接存取</li>
-  <li><strong>逆向工程</strong>：postmarketOS 社群正在進行 SLPI 驅動的逆向工程工作</li>
+  <li><code>remoteproc</code> 框架：管理遠端處理器的生命週期</li>
+  <li><code>qcom_q6v5_pas</code> 驅動：Qualcomm 的 Peripheral Authentication Service 介面</li>
+  <li><code>fastrpc</code>：HLOS 與 SLPI 之間的函式呼叫橋接</li>
+  <li>Device Tree 節點：描述 SLPI 的記憶體保留區域與中斷配置</li>
 </ul>
 
-<div class="callout-info">
-  <strong>ℹ️ 參考：</strong>postmarketOS 的 EMAINLINE 系列文章詳細記錄了在 MSM8996 上啟用 SLPI 的過程，包括 Device Tree 設定、記憶體區域配置等。
-</div>
-            `
-          }
-        ]
-      },
-      {
-        id: "dsp-subsystems",
-        title: "DSP 子系統",
-        description: "ADSP、CDSP 的架構與用途",
-        icon: "Zap",
-        articles: [
-          {
-            id: "adsp-lpass",
-            title: "ADSP / LPASS：音訊與感測器 DSP",
-            description: "ADSP 的架構、Island Mode 低功耗機制與主要應用場景",
-            tags: ["ADSP", "LPASS", "音訊", "Island Mode"],
-            lastUpdated: "2026-04-14",
-            content: `
-<h1>ADSP / LPASS：音訊與感測器 DSP</h1>
-
-<p>ADSP（Audio Digital Signal Processor），也稱為 LPASS（Low Power Audio Subsystem），是 Qualcomm SoC 中負責音訊處理與部分感測器融合的低功耗 DSP 子系統。</p>
-
-<h2>主要功能</h2>
-
-<ul>
-  <li><strong>音訊編解碼</strong>：硬體加速 MP3、AAC、FLAC 等格式的解碼，讓主 CPU 在播放音樂時可以睡眠</li>
-  <li><strong>語音喚醒（Voice Trigger）</strong>：持續執行小型神經網路，偵測喚醒詞（"Hey Siri"、"OK Google"）</li>
-  <li><strong>感測器融合（Sensor Fusion）</strong>：將多個感測器資料融合，如 IMU 融合（加速度計 + 陀螺儀 + 磁力計 → 方向）</li>
-  <li><strong>音效處理</strong>：均衡器、空間音效、降噪等音訊後處理</li>
-</ul>
-
-<h2>ADSP Island Mode（低功耗模式）</h2>
-
-<p>ADSP 支援 Island Mode，允許在系統深度睡眠時保持部分功能運作：</p>
-
-<ul>
-  <li>主 CPU 進入深度睡眠（C-state）</li>
-  <li>ADSP 保持在低功耗 Island Mode</li>
-  <li>繼續處理語音喚醒或感測器資料</li>
-  <li>偵測到事件時，透過中斷喚醒主 CPU</li>
-</ul>
-
-<h2>與 SLPI 的分工</h2>
-
-<table>
-  <thead><tr><th>功能</th><th>SLPI</th><th>ADSP</th></tr></thead>
-  <tbody>
-    <tr><td>感測器物理介面（I2C/SPI）</td><td>✅ 直接連接</td><td>❌ 透過 IPC 取得</td></tr>
-    <tr><td>基礎感測器採集</td><td>✅ 主要負責</td><td>❌</td></tr>
-    <tr><td>簡單閾值判斷（計步）</td><td>✅</td><td>❌</td></tr>
-    <tr><td>複雜感測器融合（IMU）</td><td>❌</td><td>✅</td></tr>
-    <tr><td>語音喚醒神經網路</td><td>❌</td><td>✅</td></tr>
-    <tr><td>音訊編解碼</td><td>❌</td><td>✅</td></tr>
-    <tr><td>功耗</td><td>&lt; 1 mW</td><td>數 mW</td></tr>
-  </tbody>
-</table>
-
-<h2>韌體映像檔</h2>
-
-<p>ADSP 韌體通常打包為 <code>adsp.img</code>，包含：</p>
-<ul>
-  <li>QuRT RTOS（Qualcomm 的即時作業系統）</li>
-  <li>音訊演算法庫</li>
-  <li>感測器融合演算法</li>
-  <li>語音喚醒模型</li>
-</ul>
-            `
-          },
-          {
-            id: "cdsp-compute",
-            title: "CDSP：運算 DSP 與 AI 加速",
-            description: "CDSP 的 Hexagon 架構與 AI/ML 推論加速應用",
-            tags: ["CDSP", "Hexagon", "AI", "NPU", "HVX"],
-            lastUpdated: "2026-04-14",
-            content: `
-<h1>CDSP：運算 DSP 與 AI 加速</h1>
-
-<p>CDSP（Compute DSP）是 Qualcomm SoC 中用於通用運算加速的 Hexagon DSP，特別針對 AI/ML 推論工作負載進行優化。</p>
-
-<h2>Hexagon 架構特點</h2>
-
-<ul>
-  <li><strong>HVX（Hexagon Vector eXtensions）</strong>：SIMD 向量運算單元，適合影像處理與 AI 推論</li>
-  <li><strong>HTA（Hexagon Tensor Accelerator）</strong>：專為矩陣乘法（神經網路推論核心運算）設計的硬體加速器</li>
-  <li><strong>低功耗設計</strong>：相比 GPU，在相同 AI 推論效能下功耗更低</li>
-</ul>
-
-<h2>主要應用場景</h2>
-
-<ul>
-  <li><strong>Camera AI 處理</strong>：人臉偵測、場景辨識、背景虛化（Portrait Mode）的神經網路推論</li>
-  <li><strong>語音辨識</strong>：語音轉文字（ASR）的神經網路推論</li>
-  <li><strong>影像超解析度</strong>：AI 放大演算法</li>
-  <li><strong>通用 GPGPU 替代</strong>：某些需要大量平行運算但對功耗敏感的任務</li>
-</ul>
-
-<h2>與 Camera ISP 的關係</h2>
-
-<p>CDSP 在相機管線的最後階段被呼叫，負責 AI 加速部分：</p>
-
-<pre>IFE（原始影像接收）
-  ↓
-BPS（Bayer 處理）
-  ↓
-IPE（降噪、色彩校正）
-  ↓
-CDSP / NPU（AI 場景辨識、人臉偵測）
-  ↓
-HLOS（Camera HAL 輸出最終影像）</pre>
-
-<h2>開發介面</h2>
-
-<ul>
-  <li><strong>Qualcomm Neural Processing SDK（SNPE）</strong>：將 TensorFlow/PyTorch 模型部署到 CDSP</li>
-  <li><strong>QNN（Qualcomm AI Engine Direct）</strong>：更新的 AI 推論框架</li>
-  <li><strong>FastRPC</strong>：HLOS 呼叫 CDSP 上函式的遠端程序呼叫機制</li>
-</ul>
-            `
-          }
-        ]
-      },
-      {
-        id: "mcu-subsystems",
-        title: "MCU 子系統",
-        description: "SMCU、CMCU 的用途與平台定位",
-        icon: "Microchip",
-        articles: [
-          {
-            id: "smcu-safety",
-            title: "SMCU：車用安全微控制器",
-            description: "SMCU 在車用/工業平台的功能安全角色，與 ISO 26262 的關係",
-            tags: ["SMCU", "車用", "ISO 26262", "功能安全", "ASIL"],
-            lastUpdated: "2026-04-14",
-            content: `
-<h1>SMCU：車用安全微控制器</h1>
-
-<div class="callout-warning">
-  <strong>⚠️ 常見誤解：</strong>SMCU 不是一般手機或消費性裝置上的感測器處理器。它專門用於車用（Automotive）或工業機器人平台。
-</div>
-
-<h2>什麼是 SMCU？</h2>
-
-<p>SMCU（Safety Microcontroller Unit）是 Qualcomm 車用 SoC（如 Snapdragon Ride / IQ9 系列）中的<strong>功能安全微控制器</strong>。它符合 ISO 26262 功能安全標準，達到 ASIL-D（最高安全完整性等級）。</p>
-
-<h2>核心職責</h2>
-
-<ul>
-  <li><strong>車輛安全控制</strong>：ADAS（先進駕駛輔助系統）的即時感測器融合與決策</li>
-  <li><strong>煞車/轉向訊號</strong>：處理安全關鍵的車輛控制訊號</li>
-  <li><strong>系統健康監控</strong>：監控主 SoC 的運作狀態，在主系統崩潰時執行安全停機（Safe State）</li>
-  <li><strong>即時保證</strong>：提供確定性的即時回應，不受主 OS 排程影響</li>
-</ul>
-
-<h2>SAIL MCU 韌體</h2>
-
-<p>SMCU 運行 Qualcomm 的 SAIL（Safety Abstraction Interface Layer）MCU 韌體，這是一個符合 ASIL-D 的即時作業系統環境。</p>
-
-<h2>與消費性裝置感測器的區別</h2>
+<h2>SMCU vs SLPI</h2>
 
 <table>
   <thead><tr><th>特性</th><th>SMCU（車用）</th><th>SLPI（手機）</th></tr></thead>
@@ -722,7 +549,7 @@ HLOS（cam-server / Camera HAL）
   {
     id: "sensor",
     title: "Sensor",
-    description: "感測器驅動開發、校準、協定與應用（即將加入 SX9204 CapSense 內容）",
+    description: "感測器驅動開發、校準、協定與應用",
     icon: "Gauge",
     color: "blue",
     subcategories: [
@@ -733,26 +560,337 @@ HLOS（cam-server / Camera HAL）
         icon: "Waves",
         articles: [
           {
-            id: "capsense-coming-soon",
-            title: "SX9204 CapSense 內容（即將加入）",
-            description: "Semtech SX9204 SAR 近接感測器的暫存器設定、Scan Period、Phase 配置等內容即將整理加入",
-            tags: ["SX9204", "CapSense", "SAR", "即將加入"],
+            id: "sx9204-overview",
+            title: "SX9204 架構總覽",
+            description: "Semtech SX9204 SAR 近接感測器的硬體架構、Channel 設計與 Phase 概念",
+            tags: ["SX9204", "CapSense", "SAR", "Phase", "Channel"],
             lastUpdated: "2026-04-14",
             content: `
-<h1>SX9204 CapSense 內容（即將加入）</h1>
+<h1>SX9204 架構總覽</h1>
 
-<p>此分類將整理 Semtech SX9204 SAR（Specific Absorption Rate）電容式近接感測器的相關知識，包含：</p>
+<p>SX9204 是 Semtech 推出的 4 通道電容式近接感測器（SAR / CapSense），廣泛用於手機、穿戴裝置的人體近接偵測（SAR 功率控制）。</p>
 
+<h2>硬體架構</h2>
+
+<p>SX9204 擁有 4 個感測通道（CSIO-0 到 CSIO-3），每個通道對應一個 Phase（掃描階段）。晶片透過 I2C 介面與主處理器通訊，並可透過中斷腳位（NIRQ）通知主機偵測狀態改變。</p>
+
+<h2>核心信號流程</h2>
+
+<pre>PCB 感測電極（Sensor Pad）
+        ↓ 電容量測
+AFE（Analog Front End）
+  - 自動偏移補償（Auto-Offset Compensation）
+  - 去除環境電容 CEnv
+        ↓
+PROXRAW（原始量測值）
+        ↓ RAW Filter
+PROXUSEFUL（去雜訊後的量測值）
+        ↓ USE Filter → AVG Filter
+PROXAVG（環境基線）
+        ↓ PROXUSEFUL - PROXAVG
+PROXDIFF（純近接信號）
+        ↓ 與 Threshold 比較
+PROXSTAT（偵測狀態：0 = 無人 / 1 = 有人）</pre>
+
+<h2>關鍵暫存器</h2>
+
+<table>
+  <thead><tr><th>暫存器</th><th>功能</th></tr></thead>
+  <tbody>
+    <tr><td><code>PHEN</code></td><td>Phase Enable：啟用哪幾個 Phase（Channel）</td></tr>
+    <tr><td><code>FREQ</code></td><td>Sampling Frequency：採樣頻率</td></tr>
+    <tr><td><code>RESOLUTION</code></td><td>解析度：影響每次採樣的平均次數</td></tr>
+    <tr><td><code>SCANPERIOD</code></td><td>掃描週期：控制 Scan Period 與 Idle Time</td></tr>
+    <tr><td><code>PROXTHRESH</code></td><td>近接偵測閾值</td></tr>
+    <tr><td><code>HYST</code></td><td>遲滯值：防止狀態抖動</td></tr>
+    <tr><td><code>PAUSEIRQEN</code></td><td>暫停 IRQ：避免 I2C 讀取與 ADC 採樣衝突</td></tr>
+  </tbody>
+</table>
+            `
+          },
+          {
+            id: "sx9204-shield",
+            title: "Shield 電極的用途",
+            description: "為什麼 SX9204 需要 Shield 電極，以及它如何消除環境干擾",
+            tags: ["SX9204", "Shield", "寄生電容", "EMI", "感測器設計"],
+            lastUpdated: "2026-04-14",
+            content: `
+<h1>Shield 電極的用途</h1>
+
+<p>Shield 是 SX9204 硬體設計中非常重要但容易被忽略的一個元件。它的核心目的是<strong>消除感測器背面的寄生電容干擾</strong>，讓感測器只對正面（朝向人體的方向）的電容變化有反應。</p>
+
+<h2>問題的根源：寄生電容</h2>
+
+<p>PCB 上的感測電極（Sensor Pad）是一塊導體，它不只對正面的空氣和人體有電容，也會對背面的 PCB 走線、電池、金屬外殼等產生<strong>寄生電容（Parasitic Capacitance）</strong>。</p>
+
+<p>這些背面的寄生電容會：</p>
 <ul>
-  <li><strong>硬體架構</strong>：SX9204 的 4 個 CSIO Channel 與 Phase 設計</li>
-  <li><strong>Scan Period 計算</strong>：sensing duration、processing duration 與 Phase 數量的關係</li>
-  <li><strong>暫存器設定</strong>：PHEN（Phase Enable）、FREQ（Sampling Frequency）、RESOLUTION 等關鍵暫存器</li>
-  <li><strong>Linux Kernel Driver</strong>：<code>sx9324.c</code> 驅動架構與 IIO 框架整合</li>
-  <li><strong>校準流程</strong>：近接感測器的調校方法</li>
+  <li>讓感測器的基線（PROXAVG）偏高，降低動態範圍</li>
+  <li>當手機彎曲、溫度變化時，背面電容也會改變，造成<strong>誤觸發</strong></li>
+  <li>讓感測器對「人體靠近」的靈敏度下降</li>
 </ul>
 
-<div class="callout-info">
-  <strong>ℹ️ 備註：</strong>請將您的 SX9204 相關對話內容提供給我，我將整理成完整的學習文件加入此分類。
+<h2>Shield 的解決方案</h2>
+
+<p>Shield 是一塊放在感測電極<strong>背面</strong>的導體層，SX9204 會驅動它輸出與感測電極<strong>完全相同的電壓波形</strong>（等電位驅動，Guard Drive）。</p>
+
+<div class="callout-tip">
+  <strong>✅ 核心原理：</strong>兩個電位完全相同的導體之間，電場為零，因此電容也為零。Shield 讓感測電極「看不見」背面的任何東西，只對正面的電容變化有反應。
+</div>
+
+<h2>Shield 的效果</h2>
+
+<table>
+  <thead><tr><th>情況</th><th>沒有 Shield</th><th>有 Shield</th></tr></thead>
+  <tbody>
+    <tr><td>背面寄生電容</td><td>存在，影響基線</td><td>被消除，基線更低更穩定</td></tr>
+    <tr><td>對人體靠近的靈敏度</td><td>較低（被背景雜訊稀釋）</td><td>較高（只感應正面）</td></tr>
+    <tr><td>溫度/彎曲造成的漂移</td><td>較大</td><td>較小</td></tr>
+    <tr><td>EMI 抗干擾能力</td><td>較弱</td><td>較強（Shield 也有屏蔽效果）</td></tr>
+  </tbody>
+</table>
+
+<h2>PCB 設計建議</h2>
+
+<ul>
+  <li>Shield 層放在感測電極的正下方（背面），面積略大於感測電極</li>
+  <li>Shield 與感測電極之間的間距越小越好（通常 0.1~0.2 mm）</li>
+  <li>Shield 連接到 SX9204 的 Shield 腳位，由晶片驅動</li>
+  <li>感測電極正面不需要 Shield（否則會屏蔽掉人體信號）</li>
+</ul>
+            `
+          },
+          {
+            id: "sx9204-digital-filtering",
+            title: "數位濾波流程：RAW / USE / AVG Filter",
+            description: "SX9204 三個數位濾波器的真實用途與協作關係",
+            tags: ["SX9204", "Digital Filter", "PROXAVG", "PROXDIFF", "PROXUSEFUL"],
+            lastUpdated: "2026-04-14",
+            content: `
+<h1>數位濾波流程：RAW / USE / AVG Filter</h1>
+
+<p>SX9204 的數位處理鏈包含三個濾波器，它們各司其職，共同確保 PROXDIFF（近接信號）的準確性。</p>
+
+<h2>整體流程</h2>
+
+<pre>PROXRAW
+  ↓ RAW Filter
+PROXUSEFUL
+  ↓ USE Filter
+PROXUSEOUT
+  ↓ AVG Filter
+PROXAVG
+
+PROXDIFF = PROXUSEFUL - PROXAVG</pre>
+
+<h2>三個 Filter 的真實用途</h2>
+
+<table>
+  <thead><tr><th>Filter</th><th>True Purpose</th></tr></thead>
+  <tbody>
+    <tr><td><strong>RAW Filter</strong></td><td>Removes circuit-level noise to stabilize PROXUSEFUL</td></tr>
+    <tr><td><strong>USE Filter</strong></td><td>Prevents PROXAVG from chasing the "user proximity" signal</td></tr>
+    <tr><td><strong>AVG Filter</strong></td><td>Slowly tracks genuine environmental drift (temperature, humidity, etc.)</td></tr>
+  </tbody>
+</table>
+
+<h2>RAW Filter：去除電路雜訊</h2>
+
+<p>RAW Filter 是一個對 PROXUSEFUL 做多次採樣平均的低通濾波器，去掉電路本身產生的高頻雜訊（每次採樣都可能有一點點誤差）。</p>
+
+<div class="callout-warning">
+  <strong>⚠️ 注意：</strong>RAW Filter 設得太強（平均次數太多），快速的短暫接觸可能被平滑掉，導致 PROXUSEFUL 的峰值變低，靈敏度下降。
+</div>
+
+<h2>USE Filter：保護 PROXAVG 不被污染</h2>
+
+<p>USE Filter 是一個指數移動平均（Exponential Moving Average），它的輸出（PROXUSEOUT）只餵給 AVG Filter，<strong>不參與偵測判斷</strong>。</p>
+
+<p>USE Filter 的時間常數比 AVG Filter 短，它的作用是：當人快速靠近時，PROXUSEFUL 快速上升，但 USE Filter 的輸出（PROXUSEOUT）變化很慢，因此 AVG Filter 幾乎看不到這個快速變化，PROXAVG 保持穩定。</p>
+
+<div class="callout-tip">
+  <strong>✅ 關鍵理解：</strong>USE Filter 不影響偵測靈敏度，因為偵測用的是 PROXUSEFUL（不是 PROXUSEOUT）。USE Filter 只影響 PROXAVG 的追蹤速度。
+</div>
+
+<h2>AVG Filter：追蹤環境基線</h2>
+
+<p>AVG Filter 是一個時間常數非常長的低通濾波器，用來追蹤「沒有人靠近時的環境電容基線」（溫度、濕度、PCB 形變等造成的緩慢漂移）。</p>
+
+<h2>為什麼需要相減？</h2>
+
+<p>PROXDIFF = PROXUSEFUL − PROXAVG，這個相減的目的是：</p>
+<ul>
+  <li>PROXUSEFUL 包含「環境背景 + 人體靠近的信號」</li>
+  <li>PROXAVG 代表「環境背景」</li>
+  <li>相減後只剩下「人體靠近的信號」</li>
+</ul>
+
+<p>如果沒有這個相減機制，溫度升高導致電容增加，系統就會誤判為有人靠近。</p>
+            `
+          },
+          {
+            id: "sx9204-proxavg-freeze",
+            title: "PROXAVG 凍結機制",
+            description: "為什麼 PROXSTAT=1 時要凍結 PROXAVG，PROXSTAT=0 時要解凍",
+            tags: ["SX9204", "PROXAVG", "PROXSTAT", "凍結", "基線"],
+            lastUpdated: "2026-04-14",
+            content: `
+<h1>PROXAVG 凍結機制</h1>
+
+<p>SX9204 有一個重要的設計：當偵測到有人靠近（PROXSTAT = 1）時，PROXAVG 會被<strong>凍結（Frozen）</strong>；當沒有人靠近（PROXSTAT = 0）時，PROXAVG 會<strong>自由追蹤（Free）</strong>環境變化。</p>
+
+<h2>為什麼 PROXSTAT = 1 時要凍結 PROXAVG？</h2>
+
+<p>當偵測到有人靠近，PROXUSEFUL 會持續偏高。如果這時候不凍結 PROXAVG，它就會慢慢跟著 PROXUSEFUL 往上爬，把「有人靠近」的狀態誤認為是新的環境基線。</p>
+
+<p>結果：PROXAVG 越來越接近 PROXUSEFUL，PROXDIFF 越來越小，最終低於 threshold，系統誤判為沒人，PROXSTAT 錯誤變回 0。</p>
+
+<div class="callout-warning">
+  <strong>⚠️ 不凍結的後果：</strong>人還在那裡，但系統以為沒人了（False Negative）。這在 SAR 功率控制應用中會造成嚴重問題——人體還在旁邊，但手機已經提高了發射功率。
+</div>
+
+<h2>為什麼 PROXSTAT = 0 時要解凍 PROXAVG？</h2>
+
+<p>當沒有人靠近，環境可能因為溫度、濕度、PCB 形變等原因緩慢漂移。這時候需要讓 PROXAVG 自由追蹤這些緩慢的環境變化，保持基線準確。</p>
+
+<p>如果這時候也凍結 PROXAVG，基線就會越來越不準，導致 PROXDIFF 出現偏差，引發誤觸發（False Positive）。</p>
+
+<h2>狀態機邏輯</h2>
+
+<pre>PROXSTAT = 0（無人）
+  PROXAVG 自由追蹤環境
+  PROXDIFF 上升，超過 Threshold + HYST
+        ↓
+PROXSTAT = 1（有人）
+  PROXAVG 凍結，不再更新
+  PROXDIFF 下降，低於 Threshold - HYST
+        ↓
+PROXSTAT = 0（無人）
+  PROXAVG 解凍，繼續追蹤環境</pre>
+
+<h2>一句話總結</h2>
+
+<p>凍結是為了「<strong>保護已偵測到的狀態不被自己吃掉</strong>」；解凍是為了「<strong>讓基線跟上真實環境，避免雜訊誤觸發</strong>」。</p>
+            `
+          },
+          {
+            id: "sx9204-threshold-hyst",
+            title: "Threshold 與 HYST 的協作",
+            description: "為什麼有了 Threshold 還需要 HYST，以及 HYST 設定的注意事項",
+            tags: ["SX9204", "Threshold", "HYST", "Schmitt Trigger", "抖動"],
+            lastUpdated: "2026-04-14",
+            content: `
+<h1>Threshold 與 HYST 的協作</h1>
+
+<p>SX9204 的偵測判斷使用兩個參數：Threshold（閾值）和 HYST（遲滯值）。兩者缺一不可。</p>
+
+<h2>只有 Threshold 會發生什麼問題？</h2>
+
+<p>如果 PROXDIFF 的值在 threshold 附近因為雜訊上下抖動：</p>
+
+<pre>PROXDIFF:  99 → 101 → 99 → 101 → 99 → 101 ...
+Threshold: 100
+
+結果：PROXSTAT 不停地 0 → 1 → 0 → 1 → 0 → 1（Chattering）</pre>
+
+<p>這種快速抖動會讓系統完全不穩定，無法正常使用。</p>
+
+<h2>加入 HYST 後的效果</h2>
+
+<p>HYST 讓「進入」和「離開」偵測狀態使用不同的門檻：</p>
+
+<table>
+  <thead><tr><th>動作</th><th>條件</th></tr></thead>
+  <tbody>
+    <tr><td><strong>進入偵測（PROXSTAT 0→1）</strong></td><td>PROXDIFF &gt; Threshold + HYST</td></tr>
+    <tr><td><strong>離開偵測（PROXSTAT 1→0）</strong></td><td>PROXDIFF &lt; Threshold − HYST</td></tr>
+  </tbody>
+</table>
+
+<p>以數字舉例（Threshold = 100，HYST = 10）：</p>
+<ul>
+  <li>進入條件：PROXDIFF &gt; 110</li>
+  <li>離開條件：PROXDIFF &lt; 90</li>
+  <li>緩衝區間（90 ~ 110）：在此區間內 PROXSTAT 不改變</li>
+</ul>
+
+<div class="callout-tip">
+  <strong>✅ 類比：</strong>這個設計在電子電路中叫做 <strong>Schmitt Trigger（施密特觸發器）</strong>，是消除雜訊抖動的經典方法。Threshold 是中心點，HYST 是在中心點兩側加上的緩衝距離。
+</div>
+
+<h2>HYST 設定的注意事項</h2>
+
+<div class="callout-warning">
+  <strong>⚠️ 重要：</strong>進入偵測的條件是 PROXDIFF &gt; Threshold + HYST。如果您的目標物靠近時只能讓 PROXDIFF 上升到 Threshold 和 Threshold + HYST 之間，系統永遠偵測不到！
+</div>
+
+<p>HYST 設定原則：</p>
+<ul>
+  <li>先量測實際信號強度（PROXDIFF 在目標靠近時能達到多少）</li>
+  <li>HYST 設定為信號強度的 10% ~ 20% 左右</li>
+  <li>設太大 → 靈敏度下降，弱信號偵測不到</li>
+  <li>設太小 → 雜訊容易造成抖動</li>
+</ul>
+            `
+          },
+          {
+            id: "sx9204-scan-period-power",
+            title: "Scan Period、功耗與 FREQ/RESOLUTION 的關係",
+            description: "SX9204 的掃描週期計算、Idle Time 設定，以及 FREQ 與功耗的反直覺關係",
+            tags: ["SX9204", "Scan Period", "SCANPERIOD", "FREQ", "RESOLUTION", "功耗"],
+            lastUpdated: "2026-04-14",
+            content: `
+<h1>Scan Period、功耗與 FREQ/RESOLUTION 的關係</h1>
+
+<p>SX9204 的功耗管理圍繞著 Scan Period 的設計，理解這個機制對於省電優化至關重要。</p>
+
+<h2>Scan Period 的組成</h2>
+
+<pre>Scan Period = 所有啟用 Phase 的 sensing/processing 時間總和 + Idle Time</pre>
+
+<p>每個 Phase 的 sensing duration 取決於：</p>
+<ul>
+  <li><strong>FREQ（Sampling Frequency）</strong>：採樣頻率越高，每次充放電週期越短</li>
+  <li><strong>RESOLUTION</strong>：解析度越高，需要更多次平均，時間越長</li>
+</ul>
+
+<h2>Idle Time 的設定</h2>
+
+<p>Idle Time 無法直接設定，而是透過 <strong>SCANPERIOD 暫存器</strong>間接控制：</p>
+
+<pre>Idle Time = SCANPERIOD − 實際量測時間</pre>
+
+<p>SCANPERIOD 可設定範圍：約 2 ms 到 4 s（共 16 個 step，以 2 的倍數遞增）。</p>
+
+<ul>
+  <li>想要更長的 Idle Time（省電）→ 把 SCANPERIOD 設大</li>
+  <li>如果量測時間超過 SCANPERIOD → 晶片直接連續掃描，沒有 Idle</li>
+</ul>
+
+<h2>RESOLUTION 越高，功耗越大</h2>
+
+<p>RESOLUTION 越高，每個 Phase 需要的採樣次數越多，sensing duration 越長，整個 Scan Period 中量測佔的比例越高，Idle 越少，功耗越大。這個關係是直覺的。</p>
+
+<h2>FREQ 越高，功耗不一定越大</h2>
+
+<div class="callout-warning">
+  <strong>⚠️ 反直覺：</strong>FREQ 越高，每次充放電週期更短，單個 Phase 的 sensing duration 反而縮短。
+</div>
+
+<table>
+  <thead><tr><th>情境</th><th>說明</th></tr></thead>
+  <tbody>
+    <tr><td><strong>SCANPERIOD 固定不變</strong></td><td>Sensing 時間縮短 → Idle 時間變長 → 整體功耗降低</td></tr>
+    <tr><td><strong>SCANPERIOD 也跟著縮短</strong></td><td>掃描更頻繁 → Idle 時間不變或更短 → 整體功耗上升</td></tr>
+  </tbody>
+</table>
+
+<h2>FREQ 與 RESOLUTION 的 Trade-off</h2>
+
+<p>提高 FREQ 的代價是<strong>抗雜訊能力下降</strong>（因為每次採樣時間短，對干擾更敏感），所以通常需要搭配提高 RESOLUTION 來補償，而 RESOLUTION 越高又會讓 sensing 時間拉長，兩者之間需要平衡。</p>
+
+<div class="callout-tip">
+  <strong>✅ 設計建議：</strong>在 SCANPERIOD 固定的前提下，提高 FREQ 反而可以降低功耗，因為 sensing 佔整個 scan period 的比例下降，idle 時間更長。但需要同步評估 RESOLUTION 是否足夠。
 </div>
             `
           }
