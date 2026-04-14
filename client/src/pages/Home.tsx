@@ -56,7 +56,7 @@ export default function Home() {
             </div>
             <div>
               <h1 className="text-2xl font-bold text-slate-900 leading-tight" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
-                Embedded Firmware Knowledge Base
+                Embedded Knowledge
               </h1>
               <p className="text-slate-500 text-sm">嵌入式韌體工程師學習筆記</p>
             </div>

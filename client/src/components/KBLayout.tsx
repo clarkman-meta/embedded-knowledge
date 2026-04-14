@@ -75,7 +75,7 @@ export default function KBLayout({ children, breadcrumbs }: KBLayoutProps) {
             <BookOpen size={14} className="text-white" />
           </div>
           <span className="font-semibold text-sm tracking-wide" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
-            Embedded Firmware KB
+            Embedded Knowledge
           </span>
         </Link>
         <div className="flex-1" />
@@ -170,7 +170,7 @@ export default function KBLayout({ children, breadcrumbs }: KBLayoutProps) {
           {/* Sidebar footer */}
           <div className="p-4 border-t border-slate-700/50 mt-auto">
             <p className="text-slate-600 text-xs leading-5">
-              Embedded Firmware Knowledge Base<br />
+              Embedded Knowledge<br />
               整理自工程師實際問答與研究
             </p>
           </div>
