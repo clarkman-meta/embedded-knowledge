@@ -2,6 +2,7 @@
 // KBLayout - Technical Codex Design System
 // Dark sidebar (#0F172A) + Light content area
 // Space Grotesk headings, Inter body, JetBrains Mono code
+// Sidebar: Category > SubCategory > [Chip >] Articles (3-level)
 // =============================================================
 
 import { useState } from "react";
@@ -25,6 +26,8 @@ import {
   Radio,
   Waves,
   Home,
+  Battery,
+  Magnet,
 } from "lucide-react";
 
 const iconMap: Record<string, React.ReactNode> = {
@@ -38,6 +41,8 @@ const iconMap: Record<string, React.ReactNode> = {
   Camera: <Camera size={14} />,
   Radio: <Radio size={14} />,
   Waves: <Waves size={14} />,
+  Battery: <Battery size={14} />,
+  Magnet: <Magnet size={14} />,
 };
 
 const colorMap: Record<string, string> = {
@@ -53,11 +58,17 @@ interface KBLayoutProps {
 
 export default function KBLayout({ children, breadcrumbs }: KBLayoutProps) {
   const [location] = useLocation();
-  const [expandedCats, setExpandedCats] = useState<Record<string, boolean>>({ qcom: true });
+  // All categories collapsed by default — user chooses what to expand
+  const [expandedCats, setExpandedCats] = useState<Record<string, boolean>>({});
+  const [expandedSubs, setExpandedSubs] = useState<Record<string, boolean>>({});
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const toggleCat = (id: string) => {
     setExpandedCats(prev => ({ ...prev, [id]: !prev[id] }));
+  };
+
+  const toggleSub = (key: string) => {
+    setExpandedSubs(prev => ({ ...prev, [key]: !prev[key] }));
   };
 
   return (
@@ -134,33 +145,93 @@ export default function KBLayout({ children, breadcrumbs }: KBLayoutProps) {
                 {/* Subcategories */}
                 {expandedCats[cat.id] && (
                   <div className="ml-3 mt-0.5 space-y-0.5">
-                    {cat.subcategories.map(sub => (
-                      <div key={sub.id}>
-                        <Link href={`/category/${cat.id}?sub=${sub.id}`}>
-                          <div className={`flex items-center gap-2 px-3 py-1.5 rounded text-xs cursor-pointer transition-colors
-                            ${location.includes(sub.id)
-                              ? "bg-green-500/20 text-green-300 border-l-2 border-green-500"
-                              : "text-slate-400 hover:text-slate-200 hover:bg-slate-800"
-                            }`}>
-                            <span className="text-slate-500">{iconMap[sub.icon]}</span>
-                            <span>{sub.title}</span>
-                          </div>
-                        </Link>
-                        {/* Articles under subcategory */}
-                        {sub.articles.map(art => (
-                          <Link key={art.id} href={`/article/${cat.id}/${sub.id}/${art.id}`}>
-                            <div className={`flex items-center gap-2 pl-8 pr-3 py-1 rounded text-xs cursor-pointer transition-colors
-                              ${location === `/article/${cat.id}/${sub.id}/${art.id}`
-                                ? "bg-green-500/10 text-green-400"
-                                : "text-slate-500 hover:text-slate-300 hover:bg-slate-800/50"
-                              }`}>
-                              <span className="w-1 h-1 rounded-full bg-current flex-shrink-0" />
-                              <span className="truncate">{art.title}</span>
-                            </div>
-                          </Link>
-                        ))}
-                      </div>
-                    ))}
+                    {cat.subcategories.map(sub => {
+                      const subKey = `${cat.id}:${sub.id}`;
+                      const hasChips = !!sub.chips;
+
+                      return (
+                        <div key={sub.id}>
+                          {/* Subcategory row */}
+                          {hasChips ? (
+                            // Clickable toggle for chip-based subcategories
+                            <button
+                              onClick={() => toggleSub(subKey)}
+                              className={`w-full flex items-center gap-2 px-3 py-1.5 rounded text-xs cursor-pointer transition-colors
+                                ${location.includes(sub.id)
+                                  ? "bg-green-500/20 text-green-300 border-l-2 border-green-500"
+                                  : "text-slate-400 hover:text-slate-200 hover:bg-slate-800"
+                                }`}
+                            >
+                              <span className="text-slate-500">{iconMap[sub.icon]}</span>
+                              <span className="flex-1 text-left">{sub.title}</span>
+                              {expandedSubs[subKey] ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
+                            </button>
+                          ) : (
+                            // Link for flat article subcategories (qcom)
+                            <Link href={`/category/${cat.id}?sub=${sub.id}`}>
+                              <div className={`flex items-center gap-2 px-3 py-1.5 rounded text-xs cursor-pointer transition-colors
+                                ${location.includes(sub.id)
+                                  ? "bg-green-500/20 text-green-300 border-l-2 border-green-500"
+                                  : "text-slate-400 hover:text-slate-200 hover:bg-slate-800"
+                                }`}>
+                                <span className="text-slate-500">{iconMap[sub.icon]}</span>
+                                <span>{sub.title}</span>
+                              </div>
+                            </Link>
+                          )}
+
+                          {/* Chip models under subcategory */}
+                          {hasChips && expandedSubs[subKey] && sub.chips?.map(chip => {
+                            const chipKey = `${subKey}:${chip.id}`;
+                            return (
+                              <div key={chip.id} className="ml-3">
+                                {/* Chip row */}
+                                <button
+                                  onClick={() => toggleSub(chipKey)}
+                                  className={`w-full flex items-center gap-2 px-3 py-1 rounded text-xs cursor-pointer transition-colors
+                                    ${location.includes(chip.id)
+                                      ? "text-green-300"
+                                      : "text-slate-500 hover:text-slate-300 hover:bg-slate-800/50"
+                                    }`}
+                                >
+                                  <span className="w-1 h-1 rounded-full bg-slate-600 flex-shrink-0" />
+                                  <span className="flex-1 text-left font-medium">{chip.title}</span>
+                                  {expandedSubs[chipKey] ? <ChevronDown size={9} /> : <ChevronRight size={9} />}
+                                </button>
+
+                                {/* Articles under chip */}
+                                {expandedSubs[chipKey] && chip.articles.map(art => (
+                                  <Link key={art.id} href={`/article/${cat.id}/${sub.id}/${chip.id}/${art.id}`}>
+                                    <div className={`flex items-center gap-2 pl-7 pr-3 py-1 rounded text-xs cursor-pointer transition-colors
+                                      ${location === `/article/${cat.id}/${sub.id}/${chip.id}/${art.id}`
+                                        ? "bg-green-500/10 text-green-400"
+                                        : "text-slate-500 hover:text-slate-300 hover:bg-slate-800/50"
+                                      }`}>
+                                      <span className="w-1 h-1 rounded-full bg-current flex-shrink-0 opacity-50" />
+                                      <span className="truncate">{art.title}</span>
+                                    </div>
+                                  </Link>
+                                ))}
+                              </div>
+                            );
+                          })}
+
+                          {/* Flat articles (qcom legacy) */}
+                          {!hasChips && sub.articles?.map(art => (
+                            <Link key={art.id} href={`/article/${cat.id}/${sub.id}/${art.id}`}>
+                              <div className={`flex items-center gap-2 pl-8 pr-3 py-1 rounded text-xs cursor-pointer transition-colors
+                                ${location === `/article/${cat.id}/${sub.id}/${art.id}`
+                                  ? "bg-green-500/10 text-green-400"
+                                  : "text-slate-500 hover:text-slate-300 hover:bg-slate-800/50"
+                                }`}>
+                                <span className="w-1 h-1 rounded-full bg-current flex-shrink-0" />
+                                <span className="truncate">{art.title}</span>
+                              </div>
+                            </Link>
+                          ))}
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
               </div>

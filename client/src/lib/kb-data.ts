@@ -13,12 +13,22 @@ export interface Article {
   lastUpdated: string;
 }
 
+export interface ChipModel {
+  id: string;
+  title: string;
+  description: string;
+  icon?: string;
+  articles: Article[];
+}
+
 export interface SubCategory {
   id: string;
   title: string;
   description: string;
   icon: string;
-  articles: Article[];
+  // Either flat articles (legacy, e.g. qcom) or chip-level grouping
+  articles?: Article[];
+  chips?: ChipModel[];
 }
 
 export interface Category {
@@ -558,7 +568,12 @@ HLOS（cam-server / Camera HAL）
         title: "CapSense / SAR",
         description: "電容式近接感測器（SAR Sensor）的原理、驅動與調校",
         icon: "Waves",
-        articles: [
+        chips: [
+          {
+            id: "sx9204",
+            title: "SX9204",
+            description: "Semtech SX9204 4 通道電容式近接感測器",
+            articles: [
           {
             id: "sx9204-overview",
             title: "SX9204 架構總覽與 AFE 流程",
@@ -1052,13 +1067,20 @@ PROXAVG（環境基線）
 </ul>
             `
           }]
+          }
+        ]
       },
       {
         id: "hall-sensor",
         title: "Hall Sensor",
-        description: "霍爾效應磁場感測器的原理、暫存器與驅動開發，以 AK09973D 為主要範例",
+        description: "霍爾效應磁場感測器的原理、暫存器與驅動開發",
         icon: "Magnet",
-        articles: [
+        chips: [
+          {
+            id: "ak09973d",
+            title: "AK09973D",
+            description: "AKM AK09973D 三軸霍爾磁場感測器",
+            articles: [
           {
             id: "ak09973d-overview",
             title: "AK09973D 概覽與主要特性",
@@ -1284,6 +1306,8 @@ I2C 介面（與主控 MCU/SoC 通訊）
 `
           }
         ]
+          }
+        ]
       }
     ]
   }
@@ -1300,7 +1324,12 @@ I2C 介面（與主控 MCU/SoC 通訊）
         title: "PMAR2230",
         description: "Qualcomm PMAR2230 PMIC 的硬體架構、電源軌、暫存器與 Linux 驅動程式",
         icon: "Battery",
-        articles: [
+        chips: [
+          {
+            id: "pmar2230",
+            title: "PMAR2230",
+            description: "Qualcomm PMAR2230 AR 眼鏡專用 PMIC",
+            articles: [
           {
             id: "pmar2230-overview",
             title: "PMAR2230 概覽與主要特性",
@@ -1968,6 +1997,8 @@ REG  = 模組內暫存器偏移量（0x00 ～ 0xFF）
 `
           }
         ]
+          }
+        ]
       }
     ]
   }
@@ -1982,17 +2013,36 @@ export function getSubCategoryById(catId: string, subId: string): SubCategory | 
   return cat?.subcategories.find(s => s.id === subId);
 }
 
-export function getArticleById(catId: string, subId: string, artId: string): Article | undefined {
+export function getChipById(catId: string, subId: string, chipId: string): ChipModel | undefined {
   const sub = getSubCategoryById(catId, subId);
-  return sub?.articles.find(a => a.id === artId);
+  return sub?.chips?.find(c => c.id === chipId);
 }
 
-export function getAllArticles(): Array<Article & { categoryId: string; subcategoryId: string }> {
-  const result: Array<Article & { categoryId: string; subcategoryId: string }> = [];
+export function getArticleById(catId: string, subId: string, artOrChipId: string, artId?: string): Article | undefined {
+  const sub = getSubCategoryById(catId, subId);
+  if (sub?.chips && artId) {
+    // Three-level: catId/subId/chipId/artId
+    const chip = sub.chips.find(c => c.id === artOrChipId);
+    return chip?.articles.find(a => a.id === artId);
+  }
+  // Two-level legacy: catId/subId/artId
+  return sub?.articles?.find(a => a.id === artOrChipId);
+}
+
+export function getAllArticles(): Array<Article & { categoryId: string; subcategoryId: string; chipId?: string }> {
+  const result: Array<Article & { categoryId: string; subcategoryId: string; chipId?: string }> = [];
   for (const cat of categories) {
     for (const sub of cat.subcategories) {
-      for (const art of sub.articles) {
-        result.push({ ...art, categoryId: cat.id, subcategoryId: sub.id });
+      if (sub.chips) {
+        for (const chip of sub.chips) {
+          for (const art of chip.articles) {
+            result.push({ ...art, categoryId: cat.id, subcategoryId: sub.id, chipId: chip.id });
+          }
+        }
+      } else if (sub.articles) {
+        for (const art of sub.articles) {
+          result.push({ ...art, categoryId: cat.id, subcategoryId: sub.id });
+        }
       }
     }
   }

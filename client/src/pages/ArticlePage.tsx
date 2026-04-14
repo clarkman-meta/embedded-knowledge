@@ -1,12 +1,12 @@
 // =============================================================
 // ArticlePage - Renders a full knowledge base article
 // Technical Codex Design System
-// Three-column: sidebar (in KBLayout) + content + TOC
+// Supports both 2-level (qcom) and 3-level (sensor/chip) routes
 // =============================================================
 
 import { useState, useEffect, useRef } from "react";
 import KBLayout from "@/components/KBLayout";
-import { getArticleById, getCategoryById, getSubCategoryById } from "@/lib/kb-data";
+import { getArticleById, getCategoryById, getSubCategoryById, getChipById } from "@/lib/kb-data";
 import { useParams } from "wouter";
 import { Tag, Calendar, Clock, ChevronRight } from "lucide-react";
 
@@ -27,18 +27,25 @@ function injectIds(html: string) {
 }
 
 export default function ArticlePage() {
-  const params = useParams<{ catId: string; subId: string; artId: string }>();
+  // wouter merges params from all matched routes; chipId may be undefined (legacy 2-level)
+  const params = useParams<{ catId: string; subId: string; chipId: string; artId: string }>();
   const [activeHeading, setActiveHeading] = useState<string>("");
   const contentRef = useRef<HTMLDivElement>(null);
 
   const cat = getCategoryById(params.catId);
   const sub = getSubCategoryById(params.catId, params.subId);
-  const art = getArticleById(params.catId, params.subId, params.artId);
+
+  // Determine if this is a 3-level or 2-level route
+  const isThreeLevel = !!params.artId;
+  const chipId = isThreeLevel ? params.chipId : undefined;
+  const artId = isThreeLevel ? params.artId : params.chipId;
+
+  const chip = chipId ? getChipById(params.catId, params.subId, chipId) : undefined;
+  const art = getArticleById(params.catId, params.subId, chipId ?? artId!, chipId ? artId : undefined);
 
   const headings = art ? extractHeadings(art.content) : [];
   const processedContent = art ? injectIds(art.content) : "";
 
-  // Estimate read time
   const wordCount = art ? art.content.replace(/<[^>]+>/g, "").length : 0;
   const readTime = Math.max(1, Math.ceil(wordCount / 400));
 
@@ -68,24 +75,32 @@ export default function ArticlePage() {
     );
   }
 
+  // Build breadcrumbs dynamically
+  const breadcrumbs = [
+    { label: "首頁", href: "/" },
+    { label: cat.title, href: `/category/${cat.id}` },
+    { label: sub.title, href: `/category/${cat.id}?sub=${sub.id}` },
+    ...(chip ? [{ label: chip.title, href: `/category/${cat.id}?sub=${sub.id}&chip=${chip.id}` }] : []),
+    { label: art.title },
+  ];
+
   return (
-    <KBLayout
-      breadcrumbs={[
-        { label: "首頁", href: "/" },
-        { label: cat.title, href: `/category/${cat.id}` },
-        { label: sub.title, href: `/category/${cat.id}?sub=${sub.id}` },
-        { label: art.title },
-      ]}
-    >
+    <KBLayout breadcrumbs={breadcrumbs}>
       <div className="flex gap-0">
         {/* Article Content */}
         <div className="flex-1 min-w-0 px-6 lg:px-10 py-8 max-w-3xl">
           {/* Article header */}
           <div className="mb-8 pb-6 border-b border-slate-200">
-            <div className="flex items-center gap-2 text-xs text-slate-400 mb-3">
+            <div className="flex items-center gap-2 text-xs text-slate-400 mb-3 flex-wrap">
               <span>{cat.title}</span>
               <ChevronRight size={10} />
               <span>{sub.title}</span>
+              {chip && (
+                <>
+                  <ChevronRight size={10} />
+                  <span>{chip.title}</span>
+                </>
+              )}
             </div>
             <h1 className="text-2xl font-bold text-slate-900 mb-3 leading-tight"
               style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
@@ -120,7 +135,7 @@ export default function ArticlePage() {
           />
         </div>
 
-        {/* TOC (Table of Contents) */}
+        {/* TOC */}
         {headings.length > 0 && (
           <aside className="hidden xl:block w-56 flex-shrink-0 py-8 pr-6">
             <div className="sticky top-16">

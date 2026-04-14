@@ -15,6 +15,9 @@ function AppRouter() {
       <Switch>
         <Route path="/" component={Home} />
         <Route path="/category/:catId" component={CategoryPage} />
+        {/* Three-level route: category / subcategory / chip / article */}
+        <Route path="/article/:catId/:subId/:chipId/:artId" component={ArticlePage} />
+        {/* Legacy two-level route: category / subcategory / article (qcom) */}
         <Route path="/article/:catId/:subId/:artId" component={ArticlePage} />
         <Route component={NotFound} />
       </Switch>
