@@ -1027,6 +1027,650 @@ PROXAVG（環境基線）
       }
     ]
   }
+,
+  {
+    id: "pmic",
+    title: "PMIC",
+    description: "電源管理 IC（PMIC）架構、暫存器與 Linux 驅動程式解析，以 PMAR2230 為主要範例",
+    icon: "Zap",
+    color: "blue",
+    subcategories: [
+      {
+        id: "pmar2230",
+        title: "PMAR2230",
+        description: "Qualcomm PMAR2230 PMIC 的硬體架構、電源軌、暫存器與 Linux 驅動程式",
+        icon: "Battery",
+        articles: [
+          {
+            id: "pmar2230-overview",
+            title: "PMAR2230 概覽與主要特性",
+            description: "PMAR2230 PMIC 的定位、功能方塊圖與主要規格一覽",
+            tags: ["PMIC", "PMAR2230", "AR", "概覽"],
+            lastUpdated: "2026-04-14",
+            content: `
+<h1>PMAR2230 概覽與主要特性</h1>
+
+<p>PMAR2230 是 Qualcomm Technologies 針對<strong>擴增實境（AR）眼鏡與智慧眼鏡（Smart Glasses）</strong>晶片組所設計的高整合度混合訊號電源管理 IC（PMIC）。它將可攜式產品的電源管理、通用 Housekeeping 功能以及 IC 層級的介面支援，全部整合在單一 208-WLPSP（Fan-out Wafer-Level Pico-Scale Package）封裝中。</p>
+
+<h2>設計定位</h2>
+
+<p>PMAR2230 作為 AR/SG 平台的主 PMIC，負責為 SoC 及所有周邊子系統提供穩定、高效率的電源。其設計目標是在極小的封裝尺寸內，提供足夠多樣的電源軌以支援異構運算平台的複雜需求。</p>
+
+<h2>主要規格一覽</h2>
+
+<table>
+  <thead><tr><th>功能類別</th><th>規格說明</th></tr></thead>
+  <tbody>
+    <tr><td><strong>SMPS 開關電源</strong></td><td>10 個 FTS533 Fast-Transient SMPS、1 個 Buck-or-Boost (BoB)、1 個 Centralized Boost (CBST)</td></tr>
+    <tr><td><strong>LDO 線性穩壓</strong></td><td>19 個 LDO（含 LDO530 與 LDO515 兩種類型）</td></tr>
+    <tr><td><strong>電壓軌總數</strong></td><td>31 個可程式化電壓軌</td></tr>
+    <tr><td><strong>GPIO</strong></td><td>14 個可程式化 GPIO</td></tr>
+    <tr><td><strong>通訊介面</strong></td><td>SPMI（與 SoC 通訊）、I2C（除錯用）</td></tr>
+    <tr><td><strong>時鐘</strong></td><td>1 個 LN CLK 輸出、1 個 Sleep Clock 輸出，支援 38.4 MHz 晶振</td></tr>
+    <tr><td><strong>Housekeeping</strong></td><td>片上 ADC（VADC）、類比多工器（AMUX）、雙推挽 DAC（DPPD，用於 AR 鏡片調光）</td></tr>
+    <tr><td><strong>保護機制</strong></td><td>過溫保護（OTP）、欠壓鎖定（UVLO）</td></tr>
+    <tr><td><strong>封裝</strong></td><td>208-WLPSP</td></tr>
+    <tr><td><strong>電源輸入（VPH_PWR）</strong></td><td>典型 3.8 V，穩態範圍 2.5 V ～ 5.0 V</td></tr>
+    <tr><td><strong>操作溫度</strong></td><td>環境溫度 -30°C ～ 接面溫度 +125°C</td></tr>
+  </tbody>
+</table>
+
+<h2>功能方塊圖架構</h2>
+
+<p>PMAR2230 的內部架構以一個共用的 <strong>Bandgap（MBG）</strong> 電壓參考為核心，驅動所有內部穩壓器。主要功能方塊包括：</p>
+
+<pre>
+VPH_PWR（電池/充電器輸入）
+  ↓
+輸入電源管理
+  ├─ SMPS 陣列（10× FTS533 + BoB + CBST）
+  └─ LDO 陣列（19× LDO530/LDO515）
+       ↓
+    各子系統電源軌
+
+時鐘管理
+  ├─ 38.4 MHz 晶振（XTAL_IN/OUT）
+  └─ RF/LN 時鐘輸出
+
+控制介面
+  ├─ SPMI（主控 SoC 通訊）
+  ├─ I2C（除錯介面）
+  └─ PON/PBS（開機/電源匯流排序列器）
+
+Housekeeping
+  ├─ VADC（電壓 ADC）
+  ├─ AMUX（類比多工器）
+  └─ DPPD（雙推挽 DAC，AR 鏡片調光）
+</pre>
+
+<h2>與 PMAR2230M 的差異</h2>
+
+<p>PMAR2230M 是 PMAR2230 的衍生型號，主要針對特定平台進行了微調。兩者在軟體介面（SPMI 暫存器映射）上高度相容，差異主要在於部分電源軌的預設電壓值與封裝規格。</p>
+
+<div class="callout-info">
+  <strong>ℹ️ 文件參考：</strong>本文內容主要來源於 PMAR2230 Data Sheet（80-85048-1 Rev. AC）第 1 章 Introduction 及 Section 3.1/3.2 電氣規格。
+</div>
+`
+          },
+          {
+            id: "pmar2230-power-rails",
+            title: "電源架構：SMPS 與 LDO 電源軌",
+            description: "PMAR2230 的 SMPS（FTS533）與 LDO 電源軌詳解，包含預設電壓與典型用途",
+            tags: ["SMPS", "LDO", "電源軌", "FTS533", "BoB"],
+            lastUpdated: "2026-04-14",
+            content: `
+<h1>電源架構：SMPS 與 LDO 電源軌</h1>
+
+<p>PMAR2230 共提供 31 個可程式化電壓軌，分為開關電源（SMPS）與線性穩壓（LDO）兩大類，分別針對高電流效率需求與低雜訊需求進行最佳化。</p>
+
+<h2>SMPS 開關電源（FTS533）</h2>
+
+<p><strong>FTS533</strong>（Fast-Transient SMPS）是 PMAR2230 的核心降壓轉換器，支援 PWM 模式、脈衝跳頻（Pulse-Skipping）模式，以及用於睡眠狀態的高效率保持（Retention）模式。</p>
+
+<table>
+  <thead><tr><th>特性</th><th>LV 範圍</th><th>MV 範圍</th></tr></thead>
+  <tbody>
+    <tr><td>輸出電壓範圍</td><td>0.300 V ～ 1.372 V</td><td>0.600 V ～ 2.744 V</td></tr>
+    <tr><td>電壓步進</td><td>4 mV</td><td>8 mV</td></tr>
+    <tr><td>操作模式</td><td colspan="2">PWM、Pulse-Skipping、Retention</td></tr>
+  </tbody>
+</table>
+
+<h3>主要 SMPS 電源軌</h3>
+
+<table>
+  <thead><tr><th>電源軌名稱</th><th>預設電壓</th><th>典型用途</th></tr></thead>
+  <tbody>
+    <tr><td><code>S1A</code></td><td>0.876 V（APC）</td><td>應用處理器核心電壓（APC/CPU）</td></tr>
+    <tr><td><code>S2A</code></td><td>0.876 V</td><td>SoC 核心子系統</td></tr>
+    <tr><td><code>S3A</code></td><td>0.876 V</td><td>SoC 核心子系統</td></tr>
+    <tr><td><code>S4A</code></td><td>0.752 V（CX）</td><td>SoC CX 電壓域（DSP、記憶體控制器）</td></tr>
+    <tr><td><code>S5A</code></td><td>1.872 V</td><td>記憶體（DDR）電源</td></tr>
+    <tr><td><code>S7A</code></td><td>1.256 V（HV Sub）</td><td>高壓子系統</td></tr>
+    <tr><td><code>BoB</code></td><td>3.296 V</td><td>Buck-or-Boost，用於 RF 等需要穩定高壓的子系統</td></tr>
+    <tr><td><code>CBST</code></td><td>5.1 V</td><td>集中式 Boost，用於需要高於 VPH_PWR 的負載</td></tr>
+  </tbody>
+</table>
+
+<h2>LDO 線性穩壓器</h2>
+
+<p>19 個 LDO 分為 <strong>LDO530</strong>（較高電流能力）和 <strong>LDO515</strong>（較低電流，低雜訊）兩種類型，為 SoC PHY、eMMC、I/O 等對雜訊敏感的負載提供乾淨電源。</p>
+
+<table>
+  <thead><tr><th>電源軌名稱</th><th>預設電壓</th><th>典型用途</th></tr></thead>
+  <tbody>
+    <tr><td><code>L1A</code></td><td>1.2 V</td><td>SoC 低電壓 I/O</td></tr>
+    <tr><td><code>L2A</code></td><td>1.2 V</td><td>SoC 類比子系統</td></tr>
+    <tr><td><code>L3A</code></td><td>1.8 V</td><td>VDD_IO（通用 I/O 電壓）</td></tr>
+    <tr><td><code>L4A</code></td><td>1.8 V</td><td>eMMC/UFS 介面電源</td></tr>
+    <tr><td><code>L5A</code></td><td>2.96 V</td><td>RF 類比電源</td></tr>
+    <tr><td><code>L6A ～ L19A</code></td><td>各異</td><td>SoC PHY、感測器、攝影機、Wi-Fi 等</td></tr>
+  </tbody>
+</table>
+
+<h2>電源軌命名規則</h2>
+
+<p>PMAR2230 的電源軌命名遵循以下規則：</p>
+
+<pre>
+S{n}A  → SMPS（Buck）第 n 路，PMIC 實例 A
+L{n}A  → LDO 第 n 路，PMIC 實例 A
+BoB    → Buck-or-Boost 轉換器
+CBST   → Centralized Boost 升壓轉換器
+</pre>
+
+<div class="callout-tip">
+  <strong>✅ 設計提示：</strong>為了最大化效率，高電流數位核心（如 CPU、DSP）應優先使用 SMPS；對雜訊敏感的 RF 類比電路、PLL 等應使用 LDO，以避免開關雜訊干擾。
+</div>
+
+<div class="callout-warning">
+  <strong>⚠️ 注意：</strong>VPH_PWR 穩態最高 5.0 V，瞬態（&lt;10 ms）最高 6.0 V。超過 6.0 V 穩態或 7.0 V 瞬態可能造成永久損壞。
+</div>
+`
+          },
+          {
+            id: "pmar2230-pon-sequence",
+            title: "Power-On 序列與 PON 狀態機",
+            description: "PMAR2230 的開機序列、PON 狀態機、重置類型與 PS_HOLD 機制",
+            tags: ["PON", "開機序列", "狀態機", "重置", "PS_HOLD"],
+            lastUpdated: "2026-04-14",
+            content: `
+<h1>Power-On 序列與 PON 狀態機</h1>
+
+<p>PMAR2230 的開機（Power-On）與關機（Power-Off）流程由內部的 <strong>PON 狀態機</strong>與 <strong>PBS（Programmable Boot Sequence）</strong>協同控制，確保所有電源軌按照嚴格的時序依序啟動，避免子系統因電源不穩定而損壞。</p>
+
+<h2>PON 狀態機</h2>
+
+<p>PON 狀態機定義了 PMIC 的完整生命週期狀態：</p>
+
+<pre>
+OFF（關機）
+  ↓ PON 觸發（電源鍵 / KPDPWR）
+PON（開機序列執行中）
+  ↓ PBS 序列完成
+ON（正常運作）
+  ↓ POFF 觸發（軟體關機 / 電源鍵長按）
+POFF（關機序列執行中）
+  ↓ 序列完成
+OFF
+
+特殊路徑：
+ON → FAULT（過溫 / UVLO / OCP）→ OFF
+ON → WARM RESET（軟體重置）→ ON
+</pre>
+
+<h2>Power-On 序列（PBS 執行順序）</h2>
+
+<p>PMAR2230 的開機序列分為三個階段：</p>
+
+<table>
+  <thead><tr><th>階段</th><th>動作</th><th>說明</th></tr></thead>
+  <tbody>
+    <tr><td><strong>Pre-Trigger</strong></td><td>啟用 VREG_1P8_SYS、VREG_1P2_SYS</td><td>為 PMIC 內部數位邏輯供電</td></tr>
+    <tr><td rowspan="4"><strong>PON 序列</strong></td><td>啟用 CBST（5.1 V Boost）</td><td>為需要高壓的負載預先充電</td></tr>
+    <tr><td>啟用 S7A（HV Sub）</td><td>高壓子系統電源</td></tr>
+    <tr><td>啟用 BoB → 各 SMPS → LDO</td><td>依序啟動各電源軌</td></tr>
+    <tr><td>啟用 S1A（APC/CPU）</td><td>最後啟動應用處理器核心</td></tr>
+    <tr><td><strong>完成</strong></td><td>拉高 PON_RESET_N</td><td>通知 SoC 電源就緒，SoC 開始啟動</td></tr>
+  </tbody>
+</table>
+
+<h2>重置類型</h2>
+
+<p>PMAR2230 支援多種重置類型，影響範圍各不相同：</p>
+
+<table>
+  <thead><tr><th>重置類型</th><th>觸發條件</th><th>效果</th></tr></thead>
+  <tbody>
+    <tr><td><strong>Warm Reset</strong></td><td>軟體指令、看門狗逾時（Stage 1）</td><td>SoC 重置，PMIC 暫存器保留（dVdd_rb 域除外）</td></tr>
+    <tr><td><strong>Hard Reset</strong></td><td>電源鍵長按、看門狗逾時（Stage 2）</td><td>SoC 重置，PMIC 大部分暫存器清除</td></tr>
+    <tr><td><strong>POFF（Shutdown）</strong></td><td>軟體關機、電源鍵長按</td><td>完整關機，所有電源軌關閉</td></tr>
+    <tr><td><strong>Stage 3 Failsafe</strong></td><td>64 秒看門狗（獨立電路）</td><td>強制重置所有 PMIC 暫存器，保證系統恢復</td></tr>
+  </tbody>
+</table>
+
+<h2>PS_HOLD 機制</h2>
+
+<p>SoC 啟動後，必須在指定時間內拉高 <strong>PS_HOLD</strong> 訊號，告知 PMIC 系統已正常運作。若 PS_HOLD 未在時限內拉高，PMIC 將執行關機序列。</p>
+
+<div class="callout-warning">
+  <strong>⚠️ 已知問題（Known Issue）：</strong>在目前版本（PRR=000）中，DVDD 重置事件只會執行關機（Shutdown），而非完整的 POFF+PON 重置。PMIC 將保持 OFF 狀態，直到有新的 PON 觸發訊號。此外，在首次電池開機時，若 SoC 未能及時拉高 PS_HOLD，PON_RESET_N 可能異常保持 HIGH，導致無法正常關機。
+</div>
+
+<h2>三階段看門狗重置設計</h2>
+
+<p>為了防止系統鎖死，PMAR2230 實作了三階段遞進式重置機制：</p>
+
+<pre>
+Stage 1（Bark）：S1 Timer 到期 → 發出中斷通知 SoC
+  ↓ SoC 未回應
+Stage 2（Bite）：S2 Timer 到期 → 執行 Hard Reset 或 Shutdown
+  ↓ 仍未恢復
+Stage 3（Failsafe）：64 秒獨立電路 → 強制重置所有 PMIC 暫存器
+</pre>
+
+<div class="callout-tip">
+  <strong>✅ 最佳實踐：</strong>Stage 3 的 64 秒 Failsafe 是獨立電路，不依賴任何軟體，是系統從未知鎖死狀態恢復的最後保障。在設計時應確保此機制不被禁用。
+</div>
+`
+          },
+          {
+            id: "pmar2230-gpio-spmi",
+            title: "GPIO 與 SPMI 介面",
+            description: "PMAR2230 的 14 個 GPIO 配置、SPMI 通訊協定與暫存器存取機制",
+            tags: ["GPIO", "SPMI", "介面", "暫存器"],
+            lastUpdated: "2026-04-14",
+            content: `
+<h1>GPIO 與 SPMI 介面</h1>
+
+<p>PMAR2230 提供 14 個可程式化 GPIO，以及 SPMI（System Power Management Interface）作為與 SoC 的主要通訊介面。這兩個功能是 PMIC 軟硬體整合的關鍵橋樑。</p>
+
+<h2>GPIO 功能概覽</h2>
+
+<p>PMAR2230 的 GPIO 支援多種工作模式，可靈活配置為數位輸入、數位輸出或類比直通（Analog Pass-Through）：</p>
+
+<table>
+  <thead><tr><th>工作模式</th><th>說明</th></tr></thead>
+  <tbody>
+    <tr><td><strong>Digital Input</strong></td><td>讀取外部數位訊號，支援可程式化上拉/下拉電阻</td></tr>
+    <tr><td><strong>Digital Output</strong></td><td>輸出數位訊號，支援可程式化驅動強度</td></tr>
+    <tr><td><strong>Digital In/Out</strong></td><td>雙向數位 I/O</td></tr>
+    <tr><td><strong>Analog Pass-Through</strong></td><td>將 GPIO 作為類比訊號通道，連接至 AMUX</td></tr>
+  </tbody>
+</table>
+
+<h3>GPIO 電氣特性</h3>
+
+<table>
+  <thead><tr><th>參數</th><th>規格</th></tr></thead>
+  <tbody>
+    <tr><td>預設狀態</td><td>數位輸入，10 µA 下拉</td></tr>
+    <tr><td>上拉電流選項</td><td>1.5 µA ～ 31.5 µA（可程式化）</td></tr>
+    <tr><td>驅動電流</td><td>可程式化，支援最高 4 MHz 訊號速率</td></tr>
+    <tr><td>電壓源</td><td>VIN0 ～ VIN2（可選擇）</td></tr>
+  </tbody>
+</table>
+
+<h3>GPIO 暫存器</h3>
+
+<p>GPIO 的配置透過以下主要暫存器完成：</p>
+
+<table>
+  <thead><tr><th>暫存器</th><th>偏移量</th><th>功能</th></tr></thead>
+  <tbody>
+    <tr><td><code>MODE_CTL</code></td><td>0x40</td><td>選擇工作模式（Input/Output/In-Out/Analog）</td></tr>
+    <tr><td><code>DIG_PULL_CTL</code></td><td>0x42</td><td>設定上拉/下拉電阻強度</td></tr>
+    <tr><td><code>DIG_OUT_SRC_CTL</code></td><td>0x44</td><td>輸出訊號來源選擇（直接輸出 or 特殊功能）</td></tr>
+    <tr><td><code>EN_CTL</code></td><td>0x46</td><td>啟用/禁用 GPIO</td></tr>
+  </tbody>
+</table>
+
+<h2>SPMI 通訊介面</h2>
+
+<p><strong>SPMI（System Power Management Interface）</strong>是 PMAR2230 與 SoC 之間的主要控制匯流排，遵循 MIPI Alliance 的 SPMI 規範。SoC 作為 Master，PMIC 作為 Slave，透過 SPMI 讀寫 PMIC 內部暫存器。</p>
+
+<h3>SPMI 時鐘配置</h3>
+
+<table>
+  <thead><tr><th>SCLK 頻率</th><th>適用場景</th></tr></thead>
+  <tbody>
+    <tr><td>&lt;9.6 MHz</td><td>低速配置，省電模式</td></tr>
+    <tr><td>19.2 MHz</td><td>標準操作模式</td></tr>
+    <tr><td>38.4 MHz</td><td>高速操作模式</td></tr>
+  </tbody>
+</table>
+
+<h3>APID 到 PPID 映射</h3>
+
+<p>SPMI 框架使用 <strong>APID（Application Peripheral ID）</strong> 到 <strong>PPID（Physical Peripheral ID）</strong> 的映射表（共 512 個 APID），管理不同執行環境（Execution Environments, EEs）對 PMIC 周邊的存取權限。</p>
+
+<pre>
+SoC（Master）
+  ↓ SPMI 匯流排
+PMIC Arbiter（仲裁器）
+  ↓ APID → PPID 映射
+PMIC 周邊（GPIO / SMPS / LDO / PON / ...）
+</pre>
+
+<div class="callout-warning">
+  <strong>⚠️ 存取控制：</strong>SPMI 周邊的存取由 MMU 強制執行。若 MMU 配置與 APID 所有權表不一致，將導致存取違規（Access Violation）。在 DTSI 的 <code>access.dtsi</code> 中設定正確的 DRV（Direct Resource Voter）權限至關重要。
+</div>
+
+<h2>I2C 除錯介面</h2>
+
+<p>除了 SPMI 外，PMAR2230 還提供一個 <strong>I2C 介面</strong>，主要用於工廠測試與開發除錯階段，允許直接讀寫 PMIC 暫存器而不需要完整的 SoC 啟動流程。</p>
+
+<div class="callout-tip">
+  <strong>✅ 最佳實踐：</strong>未使用的 GPIO 應配置為數位輸入並啟用內部下拉電阻，以最小化漏電流，降低待機功耗。
+</div>
+`
+          },
+          {
+            id: "pmar2230-linux-software",
+            title: "Linux 軟體架構與驅動程式",
+            description: "PMAR2230 的 Linux 驅動程式架構、RPMh 整合、Device Tree 配置與除錯方法",
+            tags: ["Linux", "驅動程式", "RPMh", "Device Tree", "DTSI"],
+            lastUpdated: "2026-04-14",
+            content: `
+<h1>Linux 軟體架構與驅動程式</h1>
+
+<p>PMAR2230 的 Linux 軟體架構採用分層設計，透過標準 Linux 框架（Regulator、Clock、GPIO/pinctrl、IIO）與硬體互動，並以 RPMh（Resource Power Manager hardening）實現硬體加速的電源管理。</p>
+
+<h2>軟體架構層次</h2>
+
+<pre>
+使用者空間（ADB / Android）
+  ↓
+Kernel（SysFS / DebugFS）
+  ├─ Regulator Framework（regulator_set_voltage / regulator_set_load）
+  ├─ Clock Framework（clk_set_rate）
+  ├─ GPIO/pinctrl Framework（gpio_request / pinctrl_select_state）
+  └─ IIO Framework（ADC 讀取）
+       ↓
+rpmh-regulator.c / clk-rpmh.c / pinctrl-spmi-gpio.c
+       ↓
+RPMh RSC（Resource State Coordinator）硬體
+  ├─ VRM（Voltage Regulator Manager）：管理 Enable/Voltage/Mode
+  └─ ARC（Aggregated Resource Controller）：管理電壓等級（0-15）
+       ↓
+PMIC Arbiter → SPMI → PMAR2230 硬體
+</pre>
+
+<h2>主要驅動程式</h2>
+
+<table>
+  <thead><tr><th>驅動程式</th><th>功能</th><th>對應 Linux 框架</th></tr></thead>
+  <tbody>
+    <tr><td><code>rpmh-regulator.c</code></td><td>電壓軌控制（SMPS/LDO/BoB）</td><td>Regulator Framework</td></tr>
+    <tr><td><code>clk-rpmh.c</code></td><td>時鐘輸出控制</td><td>Clock Framework</td></tr>
+    <tr><td><code>pinctrl-spmi-gpio.c</code></td><td>GPIO 配置與控制</td><td>GPIO/pinctrl Framework</td></tr>
+    <tr><td><code>qcom-spmi-adc5.c</code></td><td>VADC 類比數位轉換</td><td>IIO Framework</td></tr>
+    <tr><td><code>qcom-coincell.c</code></td><td>紐扣電池充電控制</td><td>Platform Driver</td></tr>
+    <tr><td><code>qpnp-pon.c</code></td><td>PON/POFF/Reset 管理</td><td>Platform Driver</td></tr>
+  </tbody>
+</table>
+
+<h2>Device Tree 配置（DTSI）</h2>
+
+<p>PMAR2230 的所有電源軌、GPIO 與時鐘均在 Device Tree Source Include（DTSI）檔案中定義。主要配置檔案包括：</p>
+
+<ul>
+  <li><code>seraph-regulators.dtsi</code>（或對應平台名稱）：定義所有電壓軌的預設電壓、最小/最大電壓限制與操作模式</li>
+  <li><code>seraph.dtsi</code>：定義 GPIO pinctrl 狀態與 SPMI 周邊節點</li>
+  <li><code>access.dtsi</code>：定義各執行環境（EE）對 SPMI 周邊的存取權限（DRV 配置）</li>
+</ul>
+
+<h3>Regulator DTSI 範例</h3>
+
+<pre>
+&amp;L3A {
+    regulator-min-microvolt = &lt;1800000&gt;;
+    regulator-max-microvolt = &lt;1800000&gt;;
+    qcom,init-voltage = &lt;1800000&gt;;
+    regulator-always-on;
+};
+
+&amp;S4A {
+    regulator-min-microvolt = &lt;600000&gt;;
+    regulator-max-microvolt = &lt;1000000&gt;;
+    qcom,init-voltage = &lt;752000&gt;;
+};
+</pre>
+
+<h2>電壓聚合機制</h2>
+
+<p>當多個子系統（Apps、Modem、DSP 等）同時請求同一電源軌時，RPMh 使用以下聚合策略：</p>
+
+<table>
+  <thead><tr><th>聚合類型</th><th>策略</th><th>適用場景</th></tr></thead>
+  <tbody>
+    <tr><td><strong>電壓聚合</strong></td><td>MAX（取最大值）</td><td>確保所有請求者都能獲得足夠電壓</td></tr>
+    <tr><td><strong>電流聚合</strong></td><td>SUM（加總）</td><td>確保 LDO/SMPS 能提供足夠總電流</td></tr>
+    <tr><td><strong>模式聚合</strong></td><td>MAX（取最高效能模式）</td><td>確保效能需求最高的請求者得到滿足</td></tr>
+  </tbody>
+</table>
+
+<h2>ADC（VADC）使用</h2>
+
+<p>PMAR2230 內建 VADC 提供系統電壓與溫度監控。Linux 中透過 IIO 框架存取：</p>
+
+<ul>
+  <li><strong>VADC 驅動</strong>提供 USR_RIF 通道存取，可讀取電池電壓、PMIC 溫度等</li>
+  <li><strong>VADC TM（Threshold Monitor）</strong>支援週期性量測，避免軟體持續輪詢，降低 CPU 負擔</li>
+  <li><strong>DPPD（雙推挽 DAC）</strong>用於 AR 鏡片調光控制，輸出範圍 -1.6 V ～ +1.575 V，步進 25 mV，最大電流 ±20 mA</li>
+</ul>
+
+<div class="callout-info">
+  <strong>ℹ️ DPPD 量測注意：</strong>由於 ADC 只能量測單端輸入，軟體必須分別讀取 VDAC_P 和 VDAC_N 兩個通道，再進行相減計算，才能得到正確的差動電壓值。
+</div>
+
+<h2>除錯方法</h2>
+
+<p>常用的 Linux 除錯工具與方法：</p>
+
+<ul>
+  <li><strong>DebugFS</strong>：掛載後可透過 <code>/sys/kernel/debug/regulator/</code> 查看所有電壓軌狀態</li>
+  <li><strong>SysFS</strong>：<code>/sys/class/regulator/</code> 提供電壓軌的即時狀態讀取</li>
+  <li><strong>動態除錯</strong>：透過 <code>echo &lt;target&gt; &gt; /sys/kernel/debug/dynamic_debug/control</code> 啟用 ADC 除錯日誌</li>
+  <li><strong>PMIC_PON.bin</strong>：分析意外重置原因的關鍵檔案，記錄了 PON 歷史事件</li>
+</ul>
+
+<div class="callout-warning">
+  <strong>⚠️ 注意：</strong>PON/POFF 觸發條件雖然可在 HLOS 中覆寫，但<strong>不建議</strong>這樣做。這些設定應保持在開機配置（Boot Configuration）中的程式化狀態，以確保系統穩定性。
+</div>
+`
+          },
+          {
+            id: "pmar2230-register-map",
+            title: "硬體暫存器地圖與關鍵暫存器",
+            description: "PMAR2230 的暫存器組織架構、關鍵模組暫存器詳解與 SPMI 存取方式",
+            tags: ["暫存器", "Register Map", "SPMI", "BUS Logger", "中斷控制器"],
+            lastUpdated: "2026-04-14",
+            content: `
+<h1>硬體暫存器地圖與關鍵暫存器</h1>
+
+<p>PMAR2230 的暫存器依功能模組組織，透過 SPMI 匯流排以 16 位元地址存取。每個模組（Peripheral）佔用 256 個位元組的地址空間，基底地址由模組類型決定。</p>
+
+<h2>暫存器地址架構</h2>
+
+<pre>
+地址格式：[SID(4-bit)][PID(8-bit)][REG(8-bit)]
+
+SID  = Slave ID（PMIC 實例識別碼）
+PID  = Peripheral ID（功能模組識別碼）
+REG  = 模組內暫存器偏移量（0x00 ～ 0xFF）
+</pre>
+
+<h2>主要功能模組基底地址</h2>
+
+<table>
+  <thead><tr><th>模組名稱</th><th>基底地址</th><th>功能說明</th></tr></thead>
+  <tbody>
+    <tr><td><strong>BUS（PBUS Logger）</strong></td><td>0x00000400</td><td>周邊匯流排交易記錄器</td></tr>
+    <tr><td><strong>INT（中斷控制器）</strong></td><td>0x00000500</td><td>集中式中斷管理</td></tr>
+    <tr><td><strong>SPMI Master</strong></td><td>0x00000700</td><td>SPMI 主控器配置</td></tr>
+    <tr><td><strong>GPIO（各組）</strong></td><td>依 GPIO 編號</td><td>GPIO 模式、上下拉、驅動強度</td></tr>
+    <tr><td><strong>RF Clock（CLK2/CLK3）</strong></td><td>依時鐘編號</td><td>RF 時鐘緩衝器配置</td></tr>
+    <tr><td><strong>PON/PBS</strong></td><td>依模組</td><td>開機序列與重置控制</td></tr>
+    <tr><td><strong>SMPS（S1A ～ S10A）</strong></td><td>依電源軌編號</td><td>SMPS 電壓、模式控制</td></tr>
+    <tr><td><strong>LDO（L1A ～ L19A）</strong></td><td>依電源軌編號</td><td>LDO 電壓、使能控制</td></tr>
+  </tbody>
+</table>
+
+<h2>通用電源軌暫存器（SMPS/LDO 共用）</h2>
+
+<table>
+  <thead><tr><th>暫存器名稱</th><th>偏移量</th><th>關鍵位元</th><th>說明</th></tr></thead>
+  <tbody>
+    <tr><td><code>STATUS1</code></td><td>0x08</td><td>Bit 7: VREG_READY<br>Bit 6: VREG_ERROR<br>Bit 5: VREG_OCP</td><td>電源軌狀態讀取</td></tr>
+    <tr><td><code>VSET_LB/UB</code></td><td>0x40/0x41</td><td>電壓設定值（低/高位元組）</td><td>設定輸出電壓（1 mV 精度）</td></tr>
+    <tr><td><code>MODE_CTL1</code></td><td>0x45</td><td>操作模式選擇</td><td>PWM / Auto / Retention 模式切換</td></tr>
+    <tr><td><code>EN_CTL</code></td><td>0x46</td><td>Bit 7: ENABLE</td><td>啟用/禁用電源軌</td></tr>
+    <tr><td><code>OCP_CTL1</code></td><td>0x88</td><td>OCP 設定</td><td>過電流保護防彈跳時間與行為</td></tr>
+    <tr><td><code>OCP_CTL2</code></td><td>0x89</td><td>OCP 廣播設定</td><td>是否觸發全域 PMIC 關機</td></tr>
+  </tbody>
+</table>
+
+<h2>PBUS Logger 暫存器（BUS 模組）</h2>
+
+<p>PBUS Logger 是 PMAR2230 的重要除錯工具，可記錄所有 SPMI 匯流排交易：</p>
+
+<table>
+  <thead><tr><th>暫存器</th><th>功能</th></tr></thead>
+  <tbody>
+    <tr><td><code>BUS_LOGGER_EN</code></td><td>Bit 7 = LOGGER_EN：啟用/禁用記錄器</td></tr>
+    <tr><td><code>BUS_MEM_INTF_ADDR</code></td><td>記憶體介面地址指標（自動遞增）</td></tr>
+    <tr><td><code>BUS_MEM_INTF_DATA0-7</code></td><td>8 位元組寬資料介面，讀取記錄內容</td></tr>
+    <tr><td><code>BUS_CAPTURE_INC</code></td><td>寫入觸發地址指標遞增（自清除暫存器）</td></tr>
+  </tbody>
+</table>
+
+<h3>PBUS Logger 使用步驟</h3>
+
+<pre>
+1. 確認 LOGGER_EN = 0（禁用狀態）
+2. 將 MEM_INTF_ADDR 重置為 0
+3. 設定 FIFO 大小（64×64 / 128×64 / 256×64）
+4. 設定過濾條件（PID/SID 過濾、讀/寫過濾）
+5. 設定 LOGGER_EN = 1 開始記錄
+6. 觸發要觀察的操作
+7. 設定 LOGGER_EN = 0 停止記錄
+8. 透過 MEM_INTF_DATA 讀取記錄內容
+</pre>
+
+<h2>PON 暫存器</h2>
+
+<table>
+  <thead><tr><th>暫存器</th><th>功能</th></tr></thead>
+  <tbody>
+    <tr><td><code>PON_XXX_RESET_S1_TIMER</code></td><td>Stage 1 重置防彈跳時間（Bark 警告）</td></tr>
+    <tr><td><code>PON_XXX_RESET_S2_TIMER</code></td><td>Stage 2 重置等待時間（Bite 執行）</td></tr>
+    <tr><td><code>PMON_HIS.BIN</code></td><td>PON 歷史記錄，用於分析意外重置原因</td></tr>
+  </tbody>
+</table>
+
+<div class="callout-warning">
+  <strong>⚠️ 讀取注意：</strong>部分暫存器（如 <code>PBS_TIMERS2_TIMER_RDATA</code>）需要「雙重讀取（Double Read）」以確認資料有效性。此外，某些記憶體介面暫存器（如 <code>BUS_MEM_INTF_DATA</code>）的讀回值可能因內部硬體處理而與寫入值不同。
+</div>
+
+<div class="callout-tip">
+  <strong>✅ 重置域（Reset Domain）：</strong>暫存器被分配到不同的重置域（如 dVdd_rb、xVdd_rb、PERPH_rb），決定在不同重置類型（Warm Reset vs. Hard Reset）下是否保留其值。在設計驅動程式時，必須了解目標暫存器所屬的重置域。
+</div>
+`
+          },
+          {
+            id: "pmar2230-design-guidelines",
+            title: "硬體設計指南",
+            description: "PMAR2230 的 PCB 佈局、接地、去耦電容、時鐘電路與電源序列設計要點",
+            tags: ["硬體設計", "PCB", "接地", "去耦電容", "時鐘"],
+            lastUpdated: "2026-04-14",
+            content: `
+<h1>硬體設計指南</h1>
+
+<p>PMAR2230 的硬體設計品質直接影響系統的電源穩定性、雜訊特性與可靠性。本文整理了 PCB 佈局、接地設計、去耦電容選擇、時鐘電路與電源序列的關鍵設計要點。</p>
+
+<h2>接地設計</h2>
+
+<p>PMAR2230 區分兩種接地：</p>
+
+<table>
+  <thead><tr><th>接地類型</th><th>說明</th><th>設計要求</th></tr></thead>
+  <tbody>
+    <tr><td><strong>CMN_GND（共用接地）</strong></td><td>訊號與類比電路的共用接地</td><td>低阻抗，避免與功率接地混用</td></tr>
+    <tr><td><strong>GNDP（功率接地）</strong></td><td>SMPS 開關電流的返回路徑</td><td>寬銅皮，盡量短且直</td></tr>
+  </tbody>
+</table>
+
+<p><strong>遠端接地感測（RMT_GND）</strong>：SMPS 的遠端接地感測線應與對應的 VREG 感測線（VREG_SENSE）以差動對（Differential Pair）方式佈線，以消除 PCB 走線電阻造成的電壓誤差。</p>
+
+<h2>去耦電容設計</h2>
+
+<table>
+  <thead><tr><th>節點</th><th>建議電容值</th><th>注意事項</th></tr></thead>
+  <tbody>
+    <tr><td><strong>VPH_PWR</strong></td><td>依電流需求，通常 10 µF ～ 100 µF</td><td>盡量靠近 PMIC 放置，減少走線電感</td></tr>
+    <tr><td><strong>SMPS 輸出</strong></td><td>依 FTS533 規格，通常 4.7 µF ～ 22 µF</td><td>使用低 ESR 陶瓷電容</td></tr>
+    <tr><td><strong>LDO 輸出</strong></td><td>1 µF ～ 10 µF</td><td>靠近負載放置</td></tr>
+    <tr><td><strong>REF_BYP（參考電壓旁路）</strong></td><td>0.1 µF</td><td>必須放置，不可省略</td></tr>
+  </tbody>
+</table>
+
+<div class="callout-warning">
+  <strong>⚠️ REF_BYP 限制：</strong>REF_BYP 腳位僅用於旁路濾波，<strong>不可</strong>作為外部參考電壓輸出使用。若需要在晶片外部使用參考電壓，應將一個 GPIO 配置為類比輸出模式。
+</div>
+
+<h2>時鐘電路設計</h2>
+
+<p>PMAR2230 使用 38.4 MHz 晶體振盪器（XTAL）作為系統時鐘來源：</p>
+
+<ul>
+  <li><strong>XTAL_IN / XTAL_OUT</strong> 腳位對雜訊極為敏感，走線應盡量短，並在周圍加入接地護欄（Guard Ring）</li>
+  <li>晶振腳位<strong>不可外部負載</strong>：若在 XTAL_IN/OUT 上加載外部電路，將破壞振盪器的正常工作</li>
+  <li>晶振的負載電容（CL）應依晶振規格選擇，通常為 8 pF ～ 18 pF</li>
+  <li>RF 時鐘輸出（CLK2_RF、CLK3_RF）具有邊緣速率控制與驅動強度調整功能，可在不同執行環境（EE）間保持時鐘穩定性</li>
+</ul>
+
+<h2>電源軌佈局原則</h2>
+
+<table>
+  <thead><tr><th>設計要點</th><th>說明</th></tr></thead>
+  <tbody>
+    <tr><td><strong>SMPS 電感選擇</strong></td><td>依 FTS533 規格選擇適當電感值，過大的電感值會降低瞬態響應速度</td></tr>
+    <tr><td><strong>電感佈局</strong></td><td>電感應靠近 PMIC 的 SW 腳位，減少開關節點的走線長度以降低 EMI</td></tr>
+    <tr><td><strong>感測線佈線</strong></td><td>VREG_SENSE 線應從負載端引出，以補償走線壓降</td></tr>
+    <tr><td><strong>熱管理</strong></td><td>高電流 SMPS 的散熱銅皮應足夠大，PMIC 下方應有散熱通孔（Thermal Via）連接到內層地平面</td></tr>
+  </tbody>
+</table>
+
+<h2>電源序列設計要點</h2>
+
+<p>嚴格遵守 PMAR2230 規定的電源序列（Power-On Sequence）是避免子系統損壞的關鍵：</p>
+
+<ul>
+  <li>不可修改 PBS 中定義的電源啟動順序，特別是 CBST → S7A → BoB → SMPS → LDO → S1A 的順序</li>
+  <li>電源軌之間的時序間隔（Timing Margin）應符合 Data Sheet 規格，不可任意縮短</li>
+  <li>關機序列（Power-Off Sequence）同樣重要，應確保 SoC 在電源軌關閉前已完成必要的狀態儲存</li>
+</ul>
+
+<h2>OCP（過電流保護）設計</h2>
+
+<p>PMAR2230 的每個電源軌都有獨立的 OCP 機制：</p>
+
+<ul>
+  <li>OCP 防彈跳時間可透過 <code>OCP_CTL1</code> 暫存器配置，避免短暫的電流突波誤觸發</li>
+  <li>若啟用 OCP 廣播（Broadcast）功能，單一電源軌的 OCP 事件將觸發整個 PMIC 關機，需謹慎評估是否啟用</li>
+  <li>電池電流限制（BCL）應整合到系統熱管理框架中，以確保在高負載瞬態時不觸發電池保護電路</li>
+</ul>
+
+<div class="callout-tip">
+  <strong>✅ 安全設計提示：</strong>在 VCCA 之前正確放置保護 FET（Protection FET），是功能安全（Functional Safety）應用的必要設計。確保在設計審查時驗證此保護電路的正確性。
+</div>
+`
+          }
+        ]
+      }
+    ]
+  }
 ];
 
 export function getCategoryById(id: string): Category | undefined {
