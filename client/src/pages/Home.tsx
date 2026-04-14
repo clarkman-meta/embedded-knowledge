@@ -40,8 +40,14 @@ const catColorMap: Record<string, { bg: string; border: string; icon: string; ba
 };
 
 export default function Home() {
+  // Helper: count articles in a subcategory (supports both flat and chip-grouped)
+  const countSubArticles = (sub: { articles?: unknown[]; chips?: { articles: unknown[] }[] }) =>
+    sub.chips
+      ? sub.chips.reduce((n, chip) => n + chip.articles.length, 0)
+      : (sub.articles?.length ?? 0);
+
   const totalArticles = categories.reduce(
-    (acc, cat) => acc + cat.subcategories.reduce((a, sub) => a + sub.articles.length, 0),
+    (acc, cat) => acc + cat.subcategories.reduce((a, sub) => a + countSubArticles(sub), 0),
     0
   );
 
@@ -82,7 +88,7 @@ export default function Home() {
         <div className="space-y-8">
           {categories.map(cat => {
             const colors = catColorMap[cat.color] || catColorMap.green;
-            const articleCount = cat.subcategories.reduce((a, sub) => a + sub.articles.length, 0);
+            const articleCount = cat.subcategories.reduce((a, sub) => a + countSubArticles(sub), 0);
             return (
               <div key={cat.id} className={`rounded-xl border-2 ${colors.border} ${colors.bg} p-6 transition-all duration-200`}>
                 {/* Category Header */}
@@ -118,7 +124,7 @@ export default function Home() {
                         </div>
                         <p className="text-xs text-slate-500 leading-5 mb-3">{sub.description}</p>
                         <div className="flex items-center justify-between">
-                          <span className="text-xs text-slate-400">{sub.articles.length} 篇</span>
+                          <span className="text-xs text-slate-400">{countSubArticles(sub)} 篇</span>
                           <ChevronRight size={12} className="text-slate-300 group-hover:text-slate-500 transition-colors" />
                         </div>
                       </div>
