@@ -154,6 +154,8 @@ const plugins = [react(), tailwindcss(), jsxLocPlugin(), vitePluginManusRuntime(
 
 export default defineConfig({
   plugins,
+  // GitHub Pages: set base to /embedded-knowledge/ when GITHUB_PAGES=true
+  base: process.env.GITHUB_PAGES === "true" ? "/embedded-knowledge/" : "/",
   resolve: {
     alias: {
       "@": path.resolve(import.meta.dirname, "client", "src"),
