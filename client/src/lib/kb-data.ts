@@ -561,340 +561,469 @@ HLOS（cam-server / Camera HAL）
         articles: [
           {
             id: "sx9204-overview",
-            title: "SX9204 架構總覽",
-            description: "Semtech SX9204 SAR 近接感測器的硬體架構、Channel 設計與 Phase 概念",
-            tags: ["SX9204", "CapSense", "SAR", "Phase", "Channel"],
+            title: "SX9204 架構總覽與 AFE 流程",
+            description: "深入解析 Semtech SX9204 SAR 感測器的硬體架構、Phase 概念與類比前端（AFE）信號處理流程。",
+            tags: ["SX9204", "CapSense", "SAR", "Phase", "AFE"],
             lastUpdated: "2026-04-14",
             content: `
-<h1>SX9204 架構總覽</h1>
+<h1>SX9204 架構總覽與 AFE 流程</h1>
 
-<p>SX9204 是 Semtech 推出的 4 通道電容式近接感測器（SAR / CapSense），廣泛用於手機、穿戴裝置的人體近接偵測（SAR 功率控制）。</p>
+<p>SX9204 是 Semtech 推出的 4 通道電容式近接感測器（SAR / CapSense），廣泛用於手機、穿戴裝置、IoT 設備的人體近接偵測，特別是在 SAR（Specific Absorption Rate）功率控制應用中，用來偵測人體靠近並降低射頻發射功率以符合安全規範。</p>
 
-<h2>硬體架構</h2>
+<h2>硬體架構與 Phase 概念</h2>
 
-<p>SX9204 擁有 4 個感測通道（CSIO-0 到 CSIO-3），每個通道對應一個 Phase（掃描階段）。晶片透過 I2C 介面與主處理器通訊，並可透過中斷腳位（NIRQ）通知主機偵測狀態改變。</p>
+<p>SX9204 擁有 4 個感測通道（CSIO-0 到 CSIO-3）。與一般感測器不同，SX9204 的量測是基於 <strong>Phase（掃描階段）</strong> 的概念。晶片內部支援多個 Phase（最多 8 個，PH0 到 PH7），每個 Phase 可以獨立設定要量測哪個感測通道，或是將多個通道組合在一起量測。</p>
 
-<h2>核心信號流程</h2>
+<ul>
+  <li><strong>獨立設定</strong>：每個 Phase 都有自己獨立的暫存器設定（如解析度、採樣頻率、閾值等）。</li>
+  <li><strong>彈性配置</strong>：在一個 Phase 中，可以設定某個 CSIO 腳位為量測輸入（Measured Input）、接地（GND）、高阻抗（HZ）或動態屏蔽（Dynamic Shield）。</li>
+</ul>
+
+<h2>AFE（Analog Front End）信號處理流程</h2>
+
+<p>從感測電極到數位信號，SX9204 的類比前端經歷了以下核心處理流程：</p>
 
 <pre>PCB 感測電極（Sensor Pad）
-        ↓ 電容量測
-AFE（Analog Front End）
-  - 自動偏移補償（Auto-Offset Compensation）
-  - 去除環境電容 CEnv
+        ↓ 
+1. 電容量測（Capacitance Measurement）
         ↓
-PROXRAW（原始量測值）
-        ↓ RAW Filter
-PROXUSEFUL（去雜訊後的量測值）
-        ↓ USE Filter → AVG Filter
-PROXAVG（環境基線）
-        ↓ PROXUSEFUL - PROXAVG
-PROXDIFF（純近接信號）
-        ↓ 與 Threshold 比較
-PROXSTAT（偵測狀態：0 = 無人 / 1 = 有人）</pre>
+2. 自動偏移補償（Auto-Offset Compensation）
+        ↓
+3. 類比數位轉換（ADC Conversion）
+        ↓
+PROXRAW（原始數位量測值）</pre>
 
-<h2>關鍵暫存器</h2>
+<h3>1. 電容量測與挑戰</h3>
+<p>感測電極與人體之間的電容變化（CUser）通常非常微小（aF 等級），而環境本身的寄生電容（CEnv）可能高達幾十 pF。系統面臨的挑戰是如何在巨大的環境電容中，精確提取微小的人體電容變化。</p>
 
-<table>
-  <thead><tr><th>暫存器</th><th>功能</th></tr></thead>
-  <tbody>
-    <tr><td><code>PHEN</code></td><td>Phase Enable：啟用哪幾個 Phase（Channel）</td></tr>
-    <tr><td><code>FREQ</code></td><td>Sampling Frequency：採樣頻率</td></tr>
-    <tr><td><code>RESOLUTION</code></td><td>解析度：影響每次採樣的平均次數</td></tr>
-    <tr><td><code>SCANPERIOD</code></td><td>掃描週期：控制 Scan Period 與 Idle Time</td></tr>
-    <tr><td><code>PROXTHRESH</code></td><td>近接偵測閾值</td></tr>
-    <tr><td><code>HYST</code></td><td>遲滯值：防止狀態抖動</td></tr>
-    <tr><td><code>PAUSEIRQEN</code></td><td>暫停 IRQ：避免 I2C 讀取與 ADC 採樣衝突</td></tr>
-  </tbody>
-</table>
+<h3>2. 自動偏移補償（Auto-Offset Compensation）</h3>
+<p>為了解決上述挑戰，SX9204 內建了 Auto-Offset Compensation 機制。在量測前，系統會動態監控並<strong>抵消掉環境電容（CEnv）</strong>。這樣一來，ADC 只需要處理人體靠近帶來的微小變化（CUser），大幅提高了系統的動態範圍與靈敏度。</p>
+
+<h3>3. 類比數位轉換（ADC）</h3>
+<p>經過補償後的電容信號進入 ADC 轉換為數位值。這個過程受到兩個關鍵參數影響：</p>
+<ul>
+  <li><strong>AGAIN（Analog Gain）</strong>：定義系統的滿量程電容值（Full-scale capacitance）。必須設定得當，確保物體靠近時信號最大化但不會飽和（Saturate）。</li>
+  <li><strong>RESOLUTION（解析度）</strong>：決定 ADC 輸出的精度。解析度越高，信號越平滑，但需要更長的量測時間與更高的功耗。</li>
+</ul>
+
+<h2>數位信號鏈概覽</h2>
+<p>經過 AFE 處理後，產生的 <code>PROXRAW</code> 會進入數位濾波鏈，依序經過 RAW Filter、USE Filter 和 AVG Filter，最終計算出 <code>PROXDIFF</code> 並與閾值比較以決定偵測狀態（PROXSTAT）。詳細的數位濾波流程將在後續章節深入探討。</p>
             `
           },
           {
             id: "sx9204-shield",
-            title: "Shield 電極的用途",
-            description: "為什麼 SX9204 需要 Shield 電極，以及它如何消除環境干擾",
-            tags: ["SX9204", "Shield", "寄生電容", "EMI", "感測器設計"],
+            title: "Shield 電極的深度解析與設計",
+            description: "探討 Shield 電極在消除寄生電容中的關鍵作用、Guard Drive 原理及 PCB 設計建議。",
+            tags: ["SX9204", "Shield", "寄生電容", "Guard Drive", "PCB設計"],
             lastUpdated: "2026-04-14",
             content: `
-<h1>Shield 電極的用途</h1>
+<h1>Shield 電極的深度解析與設計</h1>
 
-<p>Shield 是 SX9204 硬體設計中非常重要但容易被忽略的一個元件。它的核心目的是<strong>消除感測器背面的寄生電容干擾</strong>，讓感測器只對正面（朝向人體的方向）的電容變化有反應。</p>
+<p>在電容感測系統中，<strong>Shield（屏蔽）電極</strong>是硬體設計中極為重要的一環。它不僅能提升感測器的靈敏度，還能大幅增強系統對環境變化的免疫力。</p>
 
-<h2>問題的根源：寄生電容</h2>
+<h2>寄生電容（Parasitic Capacitance）的問題</h2>
 
-<p>PCB 上的感測電極（Sensor Pad）是一塊導體，它不只對正面的空氣和人體有電容，也會對背面的 PCB 走線、電池、金屬外殼等產生<strong>寄生電容（Parasitic Capacitance）</strong>。</p>
+<p>PCB 上的感測電極（Sensor Pad）本質上是一塊導電銅箔。它不僅會對正面的空氣和靠近的人體產生電容，也會對背面的 PCB 走線、電池、金屬外殼、甚至系統地（GND）產生電容。這些非目標的電容統稱為<strong>寄生電容</strong>。</p>
 
-<p>這些背面的寄生電容會：</p>
+<p>寄生電容會帶來以下嚴重問題：</p>
 <ul>
-  <li>讓感測器的基線（PROXAVG）偏高，降低動態範圍</li>
-  <li>當手機彎曲、溫度變化時，背面電容也會改變，造成<strong>誤觸發</strong></li>
-  <li>讓感測器對「人體靠近」的靈敏度下降</li>
+  <li><strong>降低靈敏度</strong>：巨大的背景寄生電容會稀釋人體靠近時產生的微小電容變化。</li>
+  <li><strong>引發誤觸發</strong>：當設備受到擠壓變形（如手機彎曲）、溫度變化或內部元件位移時，背面的寄生電容會改變，導致系統誤判為有人靠近。</li>
 </ul>
 
-<h2>Shield 的解決方案</h2>
+<h2>Guard Drive 與 Shield 原理</h2>
 
-<p>Shield 是一塊放在感測電極<strong>背面</strong>的導體層，SX9204 會驅動它輸出與感測電極<strong>完全相同的電壓波形</strong>（等電位驅動，Guard Drive）。</p>
+<p>為了解決寄生電容問題，SX9204 採用了 <strong>Guard Drive（等電位驅動）</strong> 技術。Shield 是一塊放置在感測電極背面的導體層（通常是 PCB 的內層或底層），SX9204 會驅動這個 Shield 層，使其輸出與感測電極<strong>完全相同的電壓波形</strong>。</p>
 
 <div class="callout-tip">
-  <strong>✅ 核心原理：</strong>兩個電位完全相同的導體之間，電場為零，因此電容也為零。Shield 讓感測電極「看不見」背面的任何東西，只對正面的電容變化有反應。
+  <strong>✅ 物理原理：</strong>根據電磁學，當兩個導體之間的電位差（電壓）為零時，它們之間就不會有電場，因此<strong>等效電容為零</strong>。
 </div>
 
-<h2>Shield 的效果</h2>
+<p>透過將 Shield 保持與 Sensor 同電位，感測電極就「看不見」背面的任何干擾源，其電場只會朝向沒有 Shield 遮擋的正面（使用者方向）發射。</p>
+
+<h2>Shield 的實際效果</h2>
 
 <table>
-  <thead><tr><th>情況</th><th>沒有 Shield</th><th>有 Shield</th></tr></thead>
+  <thead><tr><th>性能指標</th><th>沒有 Shield</th><th>有 Shield</th></tr></thead>
   <tbody>
-    <tr><td>背面寄生電容</td><td>存在，影響基線</td><td>被消除，基線更低更穩定</td></tr>
-    <tr><td>對人體靠近的靈敏度</td><td>較低（被背景雜訊稀釋）</td><td>較高（只感應正面）</td></tr>
-    <tr><td>溫度/彎曲造成的漂移</td><td>較大</td><td>較小</td></tr>
-    <tr><td>EMI 抗干擾能力</td><td>較弱</td><td>較強（Shield 也有屏蔽效果）</td></tr>
+    <tr><td><strong>背面寄生電容</strong></td><td>存在，導致基線偏高</td><td>被消除，基線更低且穩定</td></tr>
+    <tr><td><strong>偵測靈敏度</strong></td><td>較低（被背景雜訊稀釋）</td><td>較高（電場集中於正面）</td></tr>
+    <tr><td><strong>抗環境干擾能力</strong></td><td>差（容易因形變、溫度誤觸發）</td><td>優（背面環境變化不影響感測）</td></tr>
+    <tr><td><strong>抗 EMI 雜訊</strong></td><td>較弱</td><td>較強（Shield 具備屏蔽雜訊效果）</td></tr>
   </tbody>
 </table>
 
-<h2>PCB 設計建議</h2>
+<h2>PCB 設計關鍵建議</h2>
 
-<ul>
-  <li>Shield 層放在感測電極的正下方（背面），面積略大於感測電極</li>
-  <li>Shield 與感測電極之間的間距越小越好（通常 0.1~0.2 mm）</li>
-  <li>Shield 連接到 SX9204 的 Shield 腳位，由晶片驅動</li>
-  <li>感測電極正面不需要 Shield（否則會屏蔽掉人體信號）</li>
-</ul>
+<p>為了讓 Shield 發揮最大效用，PCB 佈線（Layout）必須遵循以下規則：</p>
+
+<ol>
+  <li><strong>位置與面積</strong>：Shield 層必須放置在感測電極的正下方（相鄰層），且其面積應<strong>略大於</strong>感測電極，以確保邊緣電場也被屏蔽。</li>
+  <li><strong>間距控制</strong>：Shield 與感測電極之間的距離越小越好（通常建議 0.1mm ~ 0.2mm 的板層厚度），以增強耦合效果。</li>
+  <li><strong>正面留空</strong>：感測電極的正面（朝向使用者的方向）絕對不能有 Shield 或 GND 覆蓋，否則會把人體的信號也屏蔽掉。</li>
+  <li><strong>走線保護</strong>：從晶片 CS 腳位連到感測電極的走線（Trace），也應該被 Shield 走線包圍或鋪銅保護，防止走線本身受到干擾。</li>
+</ol>
             `
           },
           {
             id: "sx9204-digital-filtering",
-            title: "數位濾波流程：RAW / USE / AVG Filter",
-            description: "SX9204 三個數位濾波器的真實用途與協作關係",
+            title: "數位濾波流程：RAW / USE / AVG 詳解",
+            description: "深入解析 SX9204 三個數位濾波器的真實用途、運作機制與協作關係。",
             tags: ["SX9204", "Digital Filter", "PROXAVG", "PROXDIFF", "PROXUSEFUL"],
             lastUpdated: "2026-04-14",
             content: `
-<h1>數位濾波流程：RAW / USE / AVG Filter</h1>
+<h1>數位濾波流程：RAW / USE / AVG 詳解</h1>
 
-<p>SX9204 的數位處理鏈包含三個濾波器，它們各司其職，共同確保 PROXDIFF（近接信號）的準確性。</p>
+<p>從 AFE 輸出的 <code>PROXRAW</code> 是一個帶有雜訊且會隨環境緩慢漂移的原始信號。SX9204 透過三個精心設計的數位濾波器（RAW、USE、AVG），將其轉換為穩定可靠的近接信號（<code>PROXDIFF</code>）。</p>
 
-<h2>整體流程</h2>
+<h2>數位信號處理鏈</h2>
 
-<pre>PROXRAW
-  ↓ RAW Filter
-PROXUSEFUL
-  ↓ USE Filter
-PROXUSEOUT
-  ↓ AVG Filter
-PROXAVG
+<pre>PROXRAW（原始 ADC 輸出）
+  ↓ [RAW Filter]
+PROXUSEFUL（去雜訊後的即時信號）
+  ↓ [USE Filter]
+PROXUSEOUT（平滑處理後的信號，僅供內部使用）
+  ↓ [AVG Filter]
+PROXAVG（環境基線）
 
-PROXDIFF = PROXUSEFUL - PROXAVG</pre>
+核心算式： PROXDIFF = PROXUSEFUL - PROXAVG</pre>
 
-<h2>三個 Filter 的真實用途</h2>
+<h2>1. RAW Filter：去除高頻電路雜訊</h2>
 
-<table>
-  <thead><tr><th>Filter</th><th>True Purpose</th></tr></thead>
-  <tbody>
-    <tr><td><strong>RAW Filter</strong></td><td>Removes circuit-level noise to stabilize PROXUSEFUL</td></tr>
-    <tr><td><strong>USE Filter</strong></td><td>Prevents PROXAVG from chasing the "user proximity" signal</td></tr>
-    <tr><td><strong>AVG Filter</strong></td><td>Slowly tracks genuine environmental drift (temperature, humidity, etc.)</td></tr>
-  </tbody>
-</table>
+<p><strong>真實用途：</strong>消除系統內部的高頻雜訊（如 ADC 轉換誤差、Wi-Fi/BLE 射頻干擾），穩定即時信號。</p>
 
-<h2>RAW Filter：去除電路雜訊</h2>
-
-<p>RAW Filter 是一個對 PROXUSEFUL 做多次採樣平均的低通濾波器，去掉電路本身產生的高頻雜訊（每次採樣都可能有一點點誤差）。</p>
+<p>RAW Filter 是一個低通濾波器，對 <code>PROXRAW</code> 進行多次平均，輸出 <code>PROXUSEFUL</code>。<code>PROXUSEFUL</code> 是系統用來判斷「目前有沒有人」的關鍵即時信號。</p>
 
 <div class="callout-warning">
-  <strong>⚠️ 注意：</strong>RAW Filter 設得太強（平均次數太多），快速的短暫接觸可能被平滑掉，導致 PROXUSEFUL 的峰值變低，靈敏度下降。
+  <strong>⚠️ 調參陷阱：</strong>如果 RAW Filter 設定太強（平均次數過多），會導致信號反應變慢。快速的短暫觸碰可能會被濾波器「抹平」，導致 <code>PROXUSEFUL</code> 峰值變低，進而降低系統靈敏度與反應速度。
 </div>
 
-<h2>USE Filter：保護 PROXAVG 不被污染</h2>
+<h2>2. USE Filter：保護基線不被污染</h2>
 
-<p>USE Filter 是一個指數移動平均（Exponential Moving Average），它的輸出（PROXUSEOUT）只餵給 AVG Filter，<strong>不參與偵測判斷</strong>。</p>
+<p><strong>真實用途：</strong>防止 <code>PROXAVG</code>（環境基線）跟著「人體靠近」的快速信號一起跑。</p>
 
-<p>USE Filter 的時間常數比 AVG Filter 短，它的作用是：當人快速靠近時，PROXUSEFUL 快速上升，但 USE Filter 的輸出（PROXUSEOUT）變化很慢，因此 AVG Filter 幾乎看不到這個快速變化，PROXAVG 保持穩定。</p>
+<p>這是一個容易被誤解的濾波器。USE Filter 是一個指數移動平均（Exponential Moving Average）濾波器，它的輸出 <code>PROXUSEOUT</code> <strong>絕對不會</strong>用來做近接偵測判斷。它唯一的用途是作為 AVG Filter 的輸入。</p>
 
-<div class="callout-tip">
-  <strong>✅ 關鍵理解：</strong>USE Filter 不影響偵測靈敏度，因為偵測用的是 PROXUSEFUL（不是 PROXUSEOUT）。USE Filter 只影響 PROXAVG 的追蹤速度。
-</div>
+<p>當人體快速靠近時，<code>PROXUSEFUL</code> 會瞬間飆高。如果直接把這個信號餵給 AVG Filter，基線可能會受到干擾。USE Filter 的時間常數較短，它能緩衝這個突波，確保傳遞給 AVG Filter 的信號相對平緩，保護基線的純潔性。</p>
 
-<h2>AVG Filter：追蹤環境基線</h2>
+<h2>3. AVG Filter：追蹤環境基線</h2>
 
-<p>AVG Filter 是一個時間常數非常長的低通濾波器，用來追蹤「沒有人靠近時的環境電容基線」（溫度、濕度、PCB 形變等造成的緩慢漂移）。</p>
+<p><strong>真實用途：</strong>緩慢追蹤真實的環境漂移（如溫度變化、濕度、機構形變），建立穩定的參考基線。</p>
 
-<h2>為什麼需要相減？</h2>
+<p>AVG Filter 是一個時間常數非常長的低通濾波器。它過濾掉所有短暫的信號變化，只保留極緩慢的趨勢，輸出 <code>PROXAVG</code>。這個值代表了「在沒有人靠近時，當下環境的真實電容狀態」。</p>
 
-<p>PROXDIFF = PROXUSEFUL − PROXAVG，這個相減的目的是：</p>
+<h2>核心計算：PROXDIFF 的意義</h2>
+
+<p>為什麼系統要用 <code>PROXUSEFUL - PROXAVG</code> 來計算 <code>PROXDIFF</code>？</p>
+
 <ul>
-  <li>PROXUSEFUL 包含「環境背景 + 人體靠近的信號」</li>
-  <li>PROXAVG 代表「環境背景」</li>
-  <li>相減後只剩下「人體靠近的信號」</li>
+  <li><code>PROXUSEFUL</code> 包含了 <strong>環境背景 + 人體信號 + 雜訊</strong>。</li>
+  <li><code>PROXAVG</code> 代表了純粹的 <strong>環境背景</strong>。</li>
+  <li>相減之後，環境背景被抵消，剩下的 <code>PROXDIFF</code> 就是純粹的 <strong>人體信號</strong>。</li>
 </ul>
 
-<p>如果沒有這個相減機制，溫度升高導致電容增加，系統就會誤判為有人靠近。</p>
+<p>這個減法機制（Differential Measurement）是 CapSense 系統能適應各種溫度與環境變化的核心。無論環境溫度讓整體電容上升還是下降，只要基線（PROXAVG）追蹤得夠準確，相減後的 PROXDIFF 就能始終保持在 0 附近，直到真正有人靠近。</p>
             `
           },
           {
             id: "sx9204-proxavg-freeze",
-            title: "PROXAVG 凍結機制",
-            description: "為什麼 PROXSTAT=1 時要凍結 PROXAVG，PROXSTAT=0 時要解凍",
-            tags: ["SX9204", "PROXAVG", "PROXSTAT", "凍結", "基線"],
+            title: "PROXAVG 凍結機制（Freeze Mechanism）",
+            description: "探討為什麼在偵測到人體時必須凍結基線，以及解凍的時機與重要性。",
+            tags: ["SX9204", "PROXAVG", "PROXSTAT", "Freeze", "基線追蹤"],
             lastUpdated: "2026-04-14",
             content: `
-<h1>PROXAVG 凍結機制</h1>
+<h1>PROXAVG 凍結機制（Freeze Mechanism）</h1>
 
-<p>SX9204 有一個重要的設計：當偵測到有人靠近（PROXSTAT = 1）時，PROXAVG 會被<strong>凍結（Frozen）</strong>；當沒有人靠近（PROXSTAT = 0）時，PROXAVG 會<strong>自由追蹤（Free）</strong>環境變化。</p>
+<p>在 CapSense 系統中，環境基線（<code>PROXAVG</code>）的準確性決定了系統的成敗。SX9204 內建了一個關鍵的保護機制：<strong>PROXAVG 凍結（Freeze）</strong>。</p>
 
-<h2>為什麼 PROXSTAT = 1 時要凍結 PROXAVG？</h2>
+<h2>凍結機制的核心邏輯</h2>
 
-<p>當偵測到有人靠近，PROXUSEFUL 會持續偏高。如果這時候不凍結 PROXAVG，它就會慢慢跟著 PROXUSEFUL 往上爬，把「有人靠近」的狀態誤認為是新的環境基線。</p>
+<p>系統根據當前的偵測狀態（<code>PROXSTAT</code>）來決定是否更新基線：</p>
 
-<p>結果：PROXAVG 越來越接近 PROXUSEFUL，PROXDIFF 越來越小，最終低於 threshold，系統誤判為沒人，PROXSTAT 錯誤變回 0。</p>
+<ul>
+  <li><strong>當 PROXSTAT = 0（無人靠近）</strong>：PROXAVG <strong>解凍（Free）</strong>，持續追蹤環境的緩慢變化。</li>
+  <li><strong>當 PROXSTAT = 1（有人靠近）</strong>：PROXAVG <strong>凍結（Frozen）</strong>，停止更新，保持在偵測到人體前一刻的數值。</li>
+</ul>
+
+<h2>為什麼有人時必須「凍結」？</h2>
+
+<p>想像一個情境：使用者把手放在感測器上長達一分鐘。此時 <code>PROXUSEFUL</code> 維持在高電位。</p>
+
+<p>如果此時 <strong>不凍結</strong> PROXAVG，AVG Filter 會認為這個持續的高電位是「新的環境狀態」，於是 PROXAVG 會慢慢往上爬，逐漸逼近 PROXUSEFUL。</p>
+
+<p>結果：</p>
+<ol>
+  <li><code>PROXDIFF</code>（= PROXUSEFUL - PROXAVG）會越來越小。</li>
+  <li>當 PROXDIFF 掉到閾值（Threshold）以下時，系統會誤判為「手已經離開」，導致 <code>PROXSTAT</code> 錯誤地變回 0。</li>
+</ol>
 
 <div class="callout-warning">
-  <strong>⚠️ 不凍結的後果：</strong>人還在那裡，但系統以為沒人了（False Negative）。這在 SAR 功率控制應用中會造成嚴重問題——人體還在旁邊，但手機已經提高了發射功率。
+  <strong>⚠️ 嚴重後果（False Negative）：</strong>在 SAR 功率控制中，這會導致手機在人體還貼著設備時，錯誤地將發射功率調到最大，造成嚴重的安全違規。凍結機制就是為了「保護已偵測到的狀態不被自己吃掉」。
 </div>
 
-<h2>為什麼 PROXSTAT = 0 時要解凍 PROXAVG？</h2>
+<h2>為什麼無人時必須「解凍」？</h2>
 
-<p>當沒有人靠近，環境可能因為溫度、濕度、PCB 形變等原因緩慢漂移。這時候需要讓 PROXAVG 自由追蹤這些緩慢的環境變化，保持基線準確。</p>
+<p>當人體離開後（PROXSTAT = 0），環境可能因為設備發熱、冷氣開啟等因素發生了變化。此時必須讓 PROXAVG 重新開始追蹤這些變化。</p>
 
-<p>如果這時候也凍結 PROXAVG，基線就會越來越不準，導致 PROXDIFF 出現偏差，引發誤觸發（False Positive）。</p>
+<p>如果一直凍結不更新，基線就會停留在過去的錯誤數值。當環境電容自然上升時，PROXDIFF 會跟著變大，最終超過閾值，導致在沒有人的情況下觸發偵測（False Positive / 幽靈觸發）。</p>
 
-<h2>狀態機邏輯</h2>
+<h2>AVGFREEZEDIS 參數設定</h2>
 
-<pre>PROXSTAT = 0（無人）
-  PROXAVG 自由追蹤環境
-  PROXDIFF 上升，超過 Threshold + HYST
-        ↓
-PROXSTAT = 1（有人）
-  PROXAVG 凍結，不再更新
-  PROXDIFF 下降，低於 Threshold - HYST
-        ↓
-PROXSTAT = 0（無人）
-  PROXAVG 解凍，繼續追蹤環境</pre>
+<p>在 SX9204 的暫存器中，有一個參數 <code>AVGFREEZEDIS</code> 可以控制這個行為：</p>
 
-<h2>一句話總結</h2>
-
-<p>凍結是為了「<strong>保護已偵測到的狀態不被自己吃掉</strong>」；解凍是為了「<strong>讓基線跟上真實環境，避免雜訊誤觸發</strong>」。</p>
+<ul>
+  <li><code>AVGFREEZEDIS = 0</code>（預設/建議）：啟用凍結。只要偵測到 proximity，基線就一直凍結直到人離開。</li>
+  <li><code>AVGFREEZEDIS = 1</code>：禁用永久凍結。偵測到 proximity 後，基線只會凍結一段時間（4 * AVGDEB samples），然後強迫解凍。這通常只在非常特殊的應用場景（且停用 USE Filter 時）才會使用。</li>
+</ul>
             `
           },
           {
             id: "sx9204-threshold-hyst",
-            title: "Threshold 與 HYST 的協作",
-            description: "為什麼有了 Threshold 還需要 HYST，以及 HYST 設定的注意事項",
-            tags: ["SX9204", "Threshold", "HYST", "Schmitt Trigger", "抖動"],
+            title: "閾值（Threshold）與遲滯（HYST）設計",
+            description: "詳解 Schmitt Trigger 原理在感測器防抖動中的應用，以及 Debouncer 的設定策略。",
+            tags: ["SX9204", "Threshold", "HYST", "Schmitt Trigger", "Debouncer"],
             lastUpdated: "2026-04-14",
             content: `
-<h1>Threshold 與 HYST 的協作</h1>
+<h1>閾值（Threshold）與遲滯（HYST）設計</h1>
 
-<p>SX9204 的偵測判斷使用兩個參數：Threshold（閾值）和 HYST（遲滯值）。兩者缺一不可。</p>
+<p>SX9204 判斷「有沒有人」並非單純比較一個數值，而是採用了 <strong>閾值（Threshold）</strong> 搭配 <strong>遲滯（Hysteresis, HYST）</strong> 的雙重門檻設計。這種設計在電子學中稱為 <strong>Schmitt Trigger（施密特觸發器）</strong>。</p>
 
-<h2>只有 Threshold 會發生什麼問題？</h2>
+<h2>為什麼單一 Threshold 不夠？</h2>
 
-<p>如果 PROXDIFF 的值在 threshold 附近因為雜訊上下抖動：</p>
+<p>如果系統只用一個 Threshold（例如 100）來判斷：</p>
+<ul>
+  <li>大於 100 → 有人（PROXSTAT = 1）</li>
+  <li>小於 100 → 無人（PROXSTAT = 0）</li>
+</ul>
 
-<pre>PROXDIFF:  99 → 101 → 99 → 101 → 99 → 101 ...
-Threshold: 100
+<p>在現實中，信號（PROXDIFF）總是帶有微小的雜訊波動。如果真實信號剛好在 100 附近徘徊（例如 99 → 101 → 99 → 101），系統的狀態就會瘋狂切換（0 → 1 → 0 → 1）。這種現象稱為 <strong>Chattering（抖動）</strong>，會導致後端處理器收到海量的中斷（IRQ），甚至引發系統崩潰。</p>
 
-結果：PROXSTAT 不停地 0 → 1 → 0 → 1 → 0 → 1（Chattering）</pre>
+<h2>HYST 的雙門檻機制</h2>
 
-<p>這種快速抖動會讓系統完全不穩定，無法正常使用。</p>
-
-<h2>加入 HYST 後的效果</h2>
-
-<p>HYST 讓「進入」和「離開」偵測狀態使用不同的門檻：</p>
+<p>加入 HYST 後，系統將「進入偵測」與「離開偵測」的門檻分開：</p>
 
 <table>
-  <thead><tr><th>動作</th><th>條件</th></tr></thead>
+  <thead><tr><th>狀態切換</th><th>觸發條件</th></tr></thead>
   <tbody>
-    <tr><td><strong>進入偵測（PROXSTAT 0→1）</strong></td><td>PROXDIFF &gt; Threshold + HYST</td></tr>
-    <tr><td><strong>離開偵測（PROXSTAT 1→0）</strong></td><td>PROXDIFF &lt; Threshold − HYST</td></tr>
+    <tr><td><strong>進入偵測（無人 → 有人）</strong></td><td>PROXDIFF &gt; <code>Threshold + HYST</code></td></tr>
+    <tr><td><strong>離開偵測（有人 → 無人）</strong></td><td>PROXDIFF &lt; <code>Threshold - HYST</code></td></tr>
   </tbody>
 </table>
 
-<p>以數字舉例（Threshold = 100，HYST = 10）：</p>
+<p>以 Threshold = 100, HYST = 10 為例：</p>
 <ul>
-  <li>進入條件：PROXDIFF &gt; 110</li>
-  <li>離開條件：PROXDIFF &lt; 90</li>
-  <li>緩衝區間（90 ~ 110）：在此區間內 PROXSTAT 不改變</li>
+  <li>信號必須超過 110 才會判定為「有人」。</li>
+  <li>信號必須低於 90 才會判定為「無人」。</li>
+  <li>在 90 到 110 之間的波動，系統狀態 <strong>保持不變</strong>。這個緩衝區間完美吸收了雜訊帶來的抖動。</li>
 </ul>
 
-<div class="callout-tip">
-  <strong>✅ 類比：</strong>這個設計在電子電路中叫做 <strong>Schmitt Trigger（施密特觸發器）</strong>，是消除雜訊抖動的經典方法。Threshold 是中心點，HYST 是在中心點兩側加上的緩衝距離。
-</div>
-
-<h2>HYST 設定的注意事項</h2>
+<h2>HYST 設定的實務陷阱</h2>
 
 <div class="callout-warning">
-  <strong>⚠️ 重要：</strong>進入偵測的條件是 PROXDIFF &gt; Threshold + HYST。如果您的目標物靠近時只能讓 PROXDIFF 上升到 Threshold 和 Threshold + HYST 之間，系統永遠偵測不到！
+  <strong>⚠️ 重要：</strong>HYST 的值不能隨便設大。進入偵測的實際門檻是 <code>Threshold + HYST</code>。如果目標物靠近時，產生的 PROXDIFF 最大只有 105，那麼在上述設定（門檻 110）下，系統<strong>永遠不會觸發</strong>。
 </div>
 
-<p>HYST 設定原則：</p>
+<p><strong>設定原則：</strong></p>
+<ol>
+  <li>測量無人時的峰對峰雜訊（Peak-to-Peak Noise, N）。</li>
+  <li>測量目標物在最遠偵測距離時的信號強度（Signal）。</li>
+  <li>Threshold 設在 Signal 的一半左右。</li>
+  <li>HYST 必須大於雜訊 N 的一半，但 <code>Threshold + HYST</code> 必須小於 Signal，保留足夠的餘裕（Margin）。</li>
+</ol>
+
+<h2>Debouncer（防彈跳機制）</h2>
+
+<p>除了 HYST，SX9204 還提供了時間維度的保護：<strong>CLOSEDEB</strong> 與 <strong>FARDEB</strong>。</p>
+
 <ul>
-  <li>先量測實際信號強度（PROXDIFF 在目標靠近時能達到多少）</li>
-  <li>HYST 設定為信號強度的 10% ~ 20% 左右</li>
-  <li>設太大 → 靈敏度下降，弱信號偵測不到</li>
-  <li>設太小 → 雜訊容易造成抖動</li>
+  <li><strong>CLOSEDEB</strong>：必須連續 N 個採樣週期都滿足 <code>&gt; Threshold + HYST</code>，才會將 PROXSTAT 設為 1。</li>
+  <li><strong>FARDEB</strong>：必須連續 N 個採樣週期都滿足 <code>&lt; Threshold - HYST</code>，才會將 PROXSTAT 設為 0。</li>
 </ul>
+
+<p>Debouncer 能有效過濾掉極短暫的突波干擾（例如 ESD 靜電打擊），但代價是<strong>增加反應時間（Reaction Time）</strong>。在設計時必須在「抗干擾能力」與「反應速度」之間取得平衡。</p>
             `
           },
           {
             id: "sx9204-scan-period-power",
-            title: "Scan Period、功耗與 FREQ/RESOLUTION 的關係",
-            description: "SX9204 的掃描週期計算、Idle Time 設定，以及 FREQ 與功耗的反直覺關係",
-            tags: ["SX9204", "Scan Period", "SCANPERIOD", "FREQ", "RESOLUTION", "功耗"],
+            title: "Scan Period、Doze Mode 與功耗優化",
+            description: "深入解析 SX9204 的掃描週期計算、Doze 節能模式，以及 FREQ 設定與功耗之間的反直覺關係。",
+            tags: ["SX9204", "Scan Period", "Doze Mode", "FREQ", "功耗管理"],
             lastUpdated: "2026-04-14",
             content: `
-<h1>Scan Period、功耗與 FREQ/RESOLUTION 的關係</h1>
+<h1>Scan Period、Doze Mode 與功耗優化</h1>
 
-<p>SX9204 的功耗管理圍繞著 Scan Period 的設計，理解這個機制對於省電優化至關重要。</p>
+<p>在穿戴裝置或手機中，感測器的功耗是極其關鍵的指標。SX9204 的功耗管理主要圍繞著 <strong>Scan Period（掃描週期）</strong> 與 <strong>休眠時間（Idle Time）</strong> 的比例來設計。</p>
 
-<h2>Scan Period 的組成</h2>
+<h2>Scan Period 與 Idle Time</h2>
 
-<pre>Scan Period = 所有啟用 Phase 的 sensing/processing 時間總和 + Idle Time</pre>
+<p>一個完整的 Scan Period 包含兩個部分：</p>
+<pre>Scan Period = (所有啟用 Phase 的量測時間總和) + Idle Time</pre>
 
-<p>每個 Phase 的 sensing duration 取決於：</p>
-<ul>
-  <li><strong>FREQ（Sampling Frequency）</strong>：採樣頻率越高，每次充放電週期越短</li>
-  <li><strong>RESOLUTION</strong>：解析度越高，需要更多次平均，時間越長</li>
-</ul>
+<p>晶片在量測時間（Active Sensing）非常耗電，而在 Idle Time 會進入低功耗狀態。因此，<strong>拉長 Idle Time 是省電的關鍵</strong>。</p>
 
-<h2>Idle Time 的設定</h2>
+<p>在 SX9204 中，我們透過 <code>SCANPERIOD</code> 暫存器設定總週期時間（範圍從 2ms 到約 4s）。系統會自動計算：<br>
+<code>Idle Time = SCANPERIOD - 量測時間</code><br>
+如果量測時間超過了設定的 SCANPERIOD，晶片就會連續不斷地掃描，完全沒有 Idle Time，導致功耗飆高。</p>
 
-<p>Idle Time 無法直接設定，而是透過 <strong>SCANPERIOD 暫存器</strong>間接控制：</p>
+<h2>FREQ（採樣頻率）與功耗的反直覺關係</h2>
 
-<pre>Idle Time = SCANPERIOD − 實際量測時間</pre>
+<p>很多人直覺認為：「頻率越高，功耗越大」。但在 SX9204 的設定中，情況可能恰好相反！</p>
 
-<p>SCANPERIOD 可設定範圍：約 2 ms 到 4 s（共 16 個 step，以 2 的倍數遞增）。</p>
-
-<ul>
-  <li>想要更長的 Idle Time（省電）→ 把 SCANPERIOD 設大</li>
-  <li>如果量測時間超過 SCANPERIOD → 晶片直接連續掃描，沒有 Idle</li>
-</ul>
-
-<h2>RESOLUTION 越高，功耗越大</h2>
-
-<p>RESOLUTION 越高，每個 Phase 需要的採樣次數越多，sensing duration 越長，整個 Scan Period 中量測佔的比例越高，Idle 越少，功耗越大。這個關係是直覺的。</p>
-
-<h2>FREQ 越高，功耗不一定越大</h2>
-
-<div class="callout-warning">
-  <strong>⚠️ 反直覺：</strong>FREQ 越高，每次充放電週期更短，單個 Phase 的 sensing duration 反而縮短。
-</div>
-
-<table>
-  <thead><tr><th>情境</th><th>說明</th></tr></thead>
-  <tbody>
-    <tr><td><strong>SCANPERIOD 固定不變</strong></td><td>Sensing 時間縮短 → Idle 時間變長 → 整體功耗降低</td></tr>
-    <tr><td><strong>SCANPERIOD 也跟著縮短</strong></td><td>掃描更頻繁 → Idle 時間不變或更短 → 整體功耗上升</td></tr>
-  </tbody>
-</table>
-
-<h2>FREQ 與 RESOLUTION 的 Trade-off</h2>
-
-<p>提高 FREQ 的代價是<strong>抗雜訊能力下降</strong>（因為每次採樣時間短，對干擾更敏感），所以通常需要搭配提高 RESOLUTION 來補償，而 RESOLUTION 越高又會讓 sensing 時間拉長，兩者之間需要平衡。</p>
+<p>每個 Phase 的量測時間取決於：<code>RESOLUTION（解析度/平均次數） / FREQ（採樣頻率）</code></p>
 
 <div class="callout-tip">
-  <strong>✅ 設計建議：</strong>在 SCANPERIOD 固定的前提下，提高 FREQ 反而可以降低功耗，因為 sensing 佔整個 scan period 的比例下降，idle 時間更長。但需要同步評估 RESOLUTION 是否足夠。
+  <strong>✅ 反直覺真相：</strong>在 <code>SCANPERIOD</code> 固定不變的前提下，提高 <code>FREQ</code> 會讓每次充放電更快完成，進而<strong>縮短量測時間</strong>。量測時間變短，意味著 <strong>Idle Time 變長</strong>，整體平均功耗反而<strong>下降</strong>！
+</div>
+
+<p><strong>Trade-off（權衡）：</strong>提高 FREQ 雖然省電，但每次採樣時間變短會降低對低頻雜訊的抵抗力。通常需要搭配較高的 RESOLUTION 來補償，而這又會把量測時間拉長。工程師必須在兩者間找到最佳平衡點。</p>
+
+<h2>Doze Mode（打盹模式）</h2>
+
+<p>為了解決「需要快速反應」與「需要極低功耗」之間的矛盾，SX9204 提供了 <strong>Doze Mode</strong> 機制。</p>
+
+<p>透過設定 <code>DOZEPERIOD</code>（可設為 SCANPERIOD 的 4倍、8倍或16倍），系統會具備以下智慧行為：</p>
+
+<ul>
+  <li><strong>無人狀態（Idle）</strong>：當長時間沒有偵測到物體時，晶片自動切換到 Doze 週期（例如原本 30ms 掃描一次，變成 240ms 掃描一次），大幅降低待機功耗。</li>
+  <li><strong>有人靠近（Active）</strong>：只要任何一個 Phase 偵測到物體（PROXSTAT 變為 1），晶片會<strong>瞬間自動喚醒</strong>，切換回快速的 <code>SCANPERIOD</code>（30ms），確保在人體移動期間具備極快的反應速度。</li>
+  <li><strong>人體離開</strong>：當人離開後，晶片再次自動降速進入 Doze Mode。</li>
+</ul>
+
+<p>Doze Mode 是穿戴式裝置達成超長續航力的必備設定。</p>
+            `
+          },
+          {
+            id: "sx9204-pauseirqen-i2c",
+            title: "PAUSEIRQEN 與 I2C 衝突解決方案",
+            description: "探討 I2C 讀取干擾 ADC 採樣的硬體問題，以及如何利用 PAUSEIRQEN 與中斷機制完美解決。",
+            tags: ["SX9204", "I2C", "PAUSEIRQEN", "IRQ", "硬體衝突"],
+            lastUpdated: "2026-04-14",
+            content: `
+<h1>PAUSEIRQEN 與 I2C 衝突解決方案</h1>
+
+<p>在整合 SX9204 到系統中時，工程師常會遇到一個棘手的硬體問題：<strong>I2C 通訊干擾</strong>。理解並解決這個問題，是確保感測器信號穩定的關鍵。</p>
+
+<h2>問題根源：I2C 讀取干擾 ADC 採樣</h2>
+
+<p>SX9204 內部的 ADC 在量測微小的電容變化（aF 等級）時，對雜訊極度敏感。而 I2C 匯流排（SCL / SDA）在傳輸資料時，會產生高頻的數位切換雜訊。</p>
+
+<p>如果主處理器（Host）在 SX9204 <strong>正在進行電容量測（Active Sensing）</strong> 的時候，透過 I2C 去讀取暫存器資料，I2C 的數位雜訊會耦合進類比前端（AFE），導致該次採樣的 <code>PROXRAW</code> 數值產生巨大偏差（Spike）。</p>
+
+<p>這種偶發的巨大雜訊會破壞基線追蹤，甚至引發嚴重的誤觸發。</p>
+
+<h2>錯誤的讀取方式（Polling）</h2>
+
+<p>最糟糕的軟體設計是使用 <strong>Polling（輪詢）</strong> 方式：主處理器每隔幾毫秒就主動透過 I2C 去問 SX9204「現在數值是多少？」。</p>
+<p>這種盲目的讀取有極高的機率剛好撞上 SX9204 的採樣週期，導致信號毀滅性的破壞。</p>
+
+<h2>正確的讀取架構：中斷驅動（Interrupt Driven）</h2>
+
+<p>為了避免衝突，讀取動作必須由 SX9204 來主導。系統應該設定 <code>CONVDONEIRQEN</code>（轉換完成中斷）：</p>
+
+<ol>
+  <li>SX9204 完成所有 Phase 的量測。</li>
+  <li>進入 Idle Time。</li>
+  <li>SX9204 拉低 NIRQ 腳位，發出中斷通知主處理器。</li>
+  <li>主處理器收到中斷後，利用這段 <strong>Idle Time</strong> 的空檔，透過 I2C 安全地讀取資料。</li>
+</ol>
+
+<h2>進階保護機制：PAUSEIRQEN</h2>
+
+<p>即使使用了中斷驅動，如果主處理器反應太慢，或者 I2C 速度太慢，導致讀取動作拖延到了下一個 Scan Period 開始，衝突依然會發生。</p>
+
+<p>為了解決這個時序邊界問題，SX9204 提供了 <strong>PAUSEIRQEN（暫停中斷）</strong> 功能：</p>
+
+<ul>
+  <li>當 <code>PAUSEIRQEN = 1</code> 時：只要 SX9204 發出中斷（NIRQ 觸發），晶片內部的狀態機就會<strong>暫停（Pause）</strong>。</li>
+  <li>在暫停期間，SX9204 <strong>絕對不會</strong>啟動下一次的電容量測。主處理器可以從容不迫地透過 I2C 讀取所有需要的資料。</li>
+  <li>當主處理器讀取 <code>RegIrqSrc</code>（清除中斷旗標）的瞬間，SX9204 才會<strong>解除暫停（Unpause）</strong>，恢復正常的掃描週期。</li>
+</ul>
+
+<div class="callout-tip">
+  <strong>✅ 最佳實踐：</strong>在所有重視信號品質的專案中，強烈建議啟用 <code>PAUSEIRQEN</code>，並確保主機在讀取完所有資料後，最後才讀取 <code>RegIrqSrc</code> 來釋放感測器。這是徹底根除 I2C 雜訊干擾的終極解決方案。
 </div>
             `
-          }
-        ]
+          },
+          {
+            id: "sx9204-tuning-guidelines",
+            title: "SX9204 參數調整實戰指南",
+            description: "從零開始的完整調參步驟，教你如何科學化地設定 Threshold、HYST 與各項關鍵參數。",
+            tags: ["SX9204", "Tuning", "參數調整", "實戰指南", "Threshold"],
+            lastUpdated: "2026-04-14",
+            content: `
+<h1>SX9204 參數調整實戰指南</h1>
+
+<p>將 SX9204 整合到產品後，必須在最終的機構環境中進行微調（Fine Tuning），才能達到最佳的偵測距離與抗干擾能力。以下是依據 Semtech 官方指南整理的標準調參 SOP。</p>
+
+<h2>Step 1: 設定基礎參數與 Analog Gain</h2>
+
+<p>首先，設定好基本的硬體配置：</p>
+<ul>
+  <li>設定 <code>PHEN</code> 啟用需要的 Phase。</li>
+  <li>設定 <code>FREQ</code> 與 <code>RESOLUTION</code>，在功耗與雜訊間取得初步平衡。</li>
+  <li><strong>最關鍵的一步：設定 AGAIN（Analog Gain）</strong>。
+    <ul>
+      <li>AGAIN 決定了系統的滿量程。</li>
+      <li>將手（或測試假人）放在要求的最遠偵測距離。</li>
+      <li>觀察 <code>PROXUSEFUL</code> 的數值。調整 AGAIN，確保數值夠大，但<strong>絕對不能達到飽和（Saturate，1,048,575 LSB）</strong>。</li>
+    </ul>
+  </li>
+</ul>
+
+<h2>Step 2: 測量環境基線與雜訊（L1 與 N）</h2>
+
+<p>在<strong>沒有任何物體靠近</strong>的情況下（確保周圍淨空）：</p>
+<ol>
+  <li>強制執行一次補償（Compensation），讓 <code>PROXDIFF</code> 歸零。</li>
+  <li>連續觀察 <code>PROXDIFF</code> 的數值一段時間。</li>
+  <li>記錄平均值 <strong>L1</strong>（理想情況下應接近 0）。</li>
+  <li>記錄這段時間內數值的最大跳動範圍，這就是<strong>峰對峰雜訊（Peak-to-Peak Noise, N）</strong>。例如數值在 -2 到 +3 之間跳動，則 N = 5。</li>
+</ol>
+
+<h2>Step 3: 測量目標信號強度（L2）</h2>
+
+<p>將目標物（手或假人）放置在<strong>規格要求的最遠偵測距離</strong>：</p>
+<ol>
+  <li>觀察並記錄此時 <code>PROXDIFF</code> 的平均數值，記為 <strong>L2</strong>。</li>
+  <li>例如，手在 15mm 處時，PROXDIFF 穩定在 136。則 L2 = 136。</li>
+</ol>
+
+<h2>Step 4: 計算並設定 Threshold</h2>
+
+<p>閾值（Threshold）的理論最佳位置通常是背景與目標信號的中間值：</p>
+<pre>理論 Threshold = (L1 + L2) / 2</pre>
+
+<p>以 L1 = 0, L2 = 136 為例，理論 Threshold 為 68。您可以將 <code>PROXTHRESH1</code> 設定為最接近的可用數值（例如 72）。</p>
+
+<h2>Step 5: 設定 HYST（遲滯）</h2>
+
+<p>HYST 的設定必須滿足兩個條件：</p>
+<ol>
+  <li><strong>大於雜訊</strong>：HYST 必須大於峰對峰雜訊 N 的一半，否則無法防止抖動。</li>
+  <li><strong>留有餘裕</strong>：<code>Threshold + HYST</code> 必須小於目標信號 L2，否則無法觸發。</li>
+</ol>
+
+<p>延續上面的例子（Threshold = 64，N = 5）：<br>
+可以選擇 HYST 設定為 <code>b10</code>（約 ±9 LSB）。因為 9 > 5，足以覆蓋雜訊；且 64 + 9 = 73，遠小於目標信號 136，保證能穩定觸發。</p>
+
+<h2>Step 6: 設定 Debouncer（防彈跳）</h2>
+
+<p>為了進一步增強抗干擾能力，設定時間維度的濾波：</p>
+<ul>
+  <li><strong>CLOSEDEB</strong>（靠近防彈跳）：設定為 2 或 4 個採樣週期。這能過濾掉極短暫的雜訊突波，但會稍微增加反應時間。</li>
+  <li><strong>FARDEB</strong>（離開防彈跳）：同樣設定為 2 或 4 個採樣週期。</li>
+</ul>
+
+<h2>Step 7: 實機驗證與微調</h2>
+
+<p>完成上述設定後，進行實機測試：</p>
+<ul>
+  <li><strong>測試靈敏度</strong>：手慢慢靠近，確認是否在預期距離觸發。如果太近才觸發，嘗試調低 Threshold 或減小 HYST。</li>
+  <li><strong>測試穩定性</strong>：手停留在觸發邊界，確認 PROXSTAT 是否會瘋狂跳動。如果會，增加 HYST 或加大 Debouncer。</li>
+  <li><strong>測試抗干擾</strong>：開啟 Wi-Fi 傳輸或震動設備，觀察基線是否穩定。若雜訊過大，考慮增強 RAW Filter 或調整 FREQ 避開干擾頻段。</li>
+</ul>
+            `
+          }]
       }
     ]
   }
